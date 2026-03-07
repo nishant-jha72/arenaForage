@@ -1,2 +1,12 @@
 .env
 node_modules/
+dist/
+coverage/
+logs/
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.suo
+*.ntvs*
