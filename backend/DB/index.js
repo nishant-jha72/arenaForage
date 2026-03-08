@@ -1,14 +1,16 @@
-const mongoose = require('mongoose');
+const mysql = require("mysql2/promise");
 
-const connectDB = async () => {
-  try {
-     const conn = await mongoose.connect(process.env.MONGODB_URI)
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.log("Error Here ")
-    console.error(`Error: ${error.message}`);
-    process.exit(1);
+const db = mysql.createPool({
+  host: "localhost",
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: "arenaForage"
+});
+const connection = db.getConnection((err) => {
+  if (err) {
+    console.error("Error connecting to the database:", err);
+  } else {
+    console.log("Connected to the database");
   }
-};
-
-module.exports = connectDB;
+});
+module.exports = db;
