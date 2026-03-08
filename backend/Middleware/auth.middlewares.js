@@ -1,18 +1,21 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET;
+const ApiError = require('../Utils/ApiError.utils');
 
-module.exports = (req, res, next) => {
-    const token = req.header('Authorization');
-
-    if (!token) {
-        return res.status(401).json({ error: "Access denied. No token provided." });
-    }
-
+const authMiddleware = (req, res, next) => {
     try {
-        const verified = jwt.verify(token.replace('Bearer ', ''), JWT_SECRET);
-        req.user = verified; 
+        // Look for token in cookies first, then Authorization header
+        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
+
+        if (!token) {
+            throw new ApiError(401, "Unauthorized request");
+        }
+
+        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        req.user = decodedToken;
         next();
-    } catch (err) {
-        res.status(400).json({ error: "Invalid Token" });
+    } catch (error) {
+        next(new ApiError(401, error?.message || "Invalid access token"));
     }
 };
+
+module.exports = authMiddleware; // Direct export

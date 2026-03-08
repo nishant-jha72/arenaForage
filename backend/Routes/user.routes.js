@@ -1,36 +1,32 @@
 const express = require('express');
 const router = express.Router();
+
 const userController = require('../Controllers/user.controllers');
-console.log("CONTROLLER CHECK:", userController);
-const authMiddleware = require('../Middleware/auth.middlewares'); // Optional: see below
+const upload = require('../Middleware/multer.middlewares');
+const authMiddleware = require('../Middleware/auth.middlewares');
 
-/**
- * PUBLIC ROUTES
- * Anyone can access these (e.g., to create an account or log in)
- */
-console.log("Type of Register:", typeof userController.register);
-console.log("Type of Login:", typeof userController.login);
-console.log("Type of AuthMiddleware:", typeof authMiddleware);
+// --- THE LOGS THAT WILL SOLVE THIS ---
+console.log("Check 1 (Controller):", typeof userController?.login);
+console.log("Check 2 (Multer):", typeof upload?.single);
+console.log("Check 3 (Auth):", typeof authMiddleware);
 
-router.post('/register', userController.register);
-router.post('/login', userController.login);
+// --- PROTECTED ROUTING ---
+if (typeof userController.register === 'function' && typeof upload?.single === 'function') {
+    router.post('/register', upload.single('profilePicture'), userController.register);
+} else {
+    console.error("ERROR: Register or Multer is broken");
+}
 
-/**
- * PROTECTED ROUTES
- * Only logged-in users with a valid JWT token can access these
- */
-// Update user profile (Name, Age, Profile Picture)
-router.put('/update/:id', authMiddleware, userController.updateProfile);
+if (typeof userController.login === 'function') {
+    router.post('/login', userController.login);
+} else {
+    console.error("ERROR: Login function is missing");
+}
 
-// Verify email status
-router.patch('/verify/:id', authMiddleware, userController.verifyEmail);
-
-/**
- * PRIVATE GET ROUTE
- * Useful for fetching the current user's data for a "Profile" page
- */
-router.get('/profile/:id', authMiddleware, async (req, res) => {
-    // Logic to fetch user data by ID and return it
-});
+if (typeof authMiddleware === 'function' && typeof userController.logout === 'function') {
+    router.post('/logout', authMiddleware, userController.logout);
+} else {
+    console.error("ERROR: AuthMiddleware or Logout is missing");
+}
 
 module.exports = router;

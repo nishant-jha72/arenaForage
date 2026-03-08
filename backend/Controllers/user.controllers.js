@@ -1,98 +1,96 @@
-const User = require('../Models/user.model');
-const jwt = require('jsonwebtoken');
-const ApiError = require('../Utils/ApiError.utils');       // Adjust path as needed
-const ApiResponse = require('../Utils/ApiResponse.utils'); // Adjust path as needed
+const User = require("../Models/user.model");
+const jwt = require("jsonwebtoken");
+const ApiError = require("../Utils/ApiError.utils");
+const ApiResponse = require("../Utils/ApiResponse.utils");
+const uploadOnCloudinary = require("../Utils/cloudinary.utils");
 
-const JWT_SECRET = process.env.JWT_SECRET;
+
+const generateAccessAndRefreshTokens = async (userId) => {
+    const accessToken = jwt.sign({ id: userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+    return { accessToken, refreshToken };
+};
 
 const userController = {
-  register: async (req, res, next) => {
-    try {
-      const { name, age, gmail, profilePicture, password } = req.body;
+    // THIS WAS THE MISSING PIECE:
+    register: async (req, res, next) => {
+        try {
+            const { name, age, gmail, password } = req.body;
 
-      if ([name, gmail, password].some((field) => field?.trim() === "")) {
-        throw new ApiError(400, "Name, Gmail, and Password are required");
-      }
+            // 1. Validation
+            if ([name, gmail, password].some((field) => field?.trim() === "")) {
+                throw new ApiError(400, "All fields (Name, Gmail, Password) are required");
+            }
 
-      const result = await User.create(name, age, gmail, profilePicture, password);
-      
-      return res.status(201).json(
-        new ApiResponse(201, { userId: result.userId }, "User registered successfully")
-      );
+            // 2. Check if user already exists
+            const existedUser = await User.findByEmail(gmail);
+            if (existedUser) {
+                throw new ApiError(409, "User with this email already exists");
+            }
 
-    } catch (error) {
-      // If the model threw an "Email already exists" error
-      if (error.message === 'Email already exists') {
-        return next(new ApiError(409, error.message));
-      }
-      next(new ApiError(500, error.message || "Registration failed"));
+            // 3. Handle File Upload
+            const profilePictureLocalPath = req.file?.path;
+            if (!profilePictureLocalPath) {
+                throw new ApiError(400, "Profile picture is required");
+            }
+
+            const cloudResponse = await uploadOnCloudinary(profilePictureLocalPath);
+            if (!cloudResponse) {
+                throw new ApiError(400, "Failed to upload image to Cloudinary");
+            }
+
+            // 4. Create User in MySQL
+            const result = await User.create(
+                name,
+                age,
+                gmail,
+                cloudResponse.url, // Cloudinary URL
+                password
+            );
+
+            // 5. Send Response
+            return res.status(201).json(
+                new ApiResponse(201, { userId: result.insertId }, "User registered successfully")
+            );
+
+        } catch (error) {
+            next(new ApiError(error.statusCode || 500, error.message));
+        }
+    },
+
+    login: async (req, res, next) => {
+        try {
+            const { gmail, password } = req.body;
+            const user = await User.findByEmail(gmail);
+            
+            if (!user || !(await User.comparePassword(password, user.password))) {
+                throw new ApiError(401, "Invalid email or password");
+            }
+
+            const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user.id);
+
+            const options = { httpOnly: true, secure: true, sameSite: 'None' };
+
+            return res
+                .status(200)
+                .cookie("accessToken", accessToken, options)
+                .cookie("refreshToken", refreshToken, options)
+                .json(new ApiResponse(200, { 
+                    user: { id: user.id, name: user.name, gmail: user.gmail } 
+                }, "Login successful"));
+        } catch (error) {
+            next(new ApiError(500, error.message));
+        }
+    },
+
+    logout: async (req, res, next) => {
+        const options = { httpOnly: true, secure: true, sameSite: 'None' };
+        return res
+            .status(200)
+            .clearCookie("accessToken", options)
+            .clearCookie("refreshToken", options)
+            .json(new ApiResponse(200, {}, "Logged out successfully"));
     }
-  },
-
-  login: async (req, res, next) => {
-    try {
-      const { gmail, password } = req.body;
-
-      const user = await User.findByEmail(gmail);
-      if (!user) {
-        throw new ApiError(401, "Invalid credentials");
-      }
-
-      const isMatch = await User.comparePassword(password, user.password);
-      if (!isMatch) {
-        throw new ApiError(401, "Invalid credentials");
-      }
-
-      const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '1d' });
-
-      return res.status(200).json(
-        new ApiResponse(200, { token, user: { name: user.name, id: user.id } }, "Login successful")
-      );
-
-    } catch (error) {
-      next(new ApiError(500, error.message));
-    }
-  },
-
-  updateProfile: async (req, res, next) => {
-    try {
-      const userId = req.params.id;
-      const { name, age, profilePicture } = req.body;
-
-      // Ensure the logged-in user is only updating themselves
-      if (req.user.id != userId) {
-        throw new ApiError(403, "You are not authorized to update this profile");
-      }
-
-      const sql = `UPDATE users SET name = ?, age = ?, profile_picture = ? WHERE id = ?`;
-      const [result] = await db.execute(sql, [name, age, profilePicture, userId]);
-
-      if (result.affectedRows === 0) {
-        throw new ApiError(404, "User not found");
-      }
-
-      return res.status(200).json(
-        new ApiResponse(200, null, "Profile updated successfully")
-      );
-
-    } catch (error) {
-      next(new ApiError(500, error.message));
-    }
-  },
-
-  verifyEmail: async (req, res, next) => {
-    try {
-      const userId = req.params.id;
-      const success = await User.verifyEmail(userId);
-      if (!success) throw new ApiError(404, "User not found");
-      
-      return res.status(200).json(
-        new ApiResponse(200, null, "Email verified successfully")
-      );
-    } catch (error) {
-      next(new ApiError(500, error.message));
-    }
-  }
 };
 
 module.exports = userController;
