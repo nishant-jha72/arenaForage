@@ -5,28 +5,19 @@ const userController = require('../Controllers/user.controllers');
 const upload = require('../Middleware/multer.middlewares');
 const authMiddleware = require('../Middleware/auth.middlewares');
 
-// --- THE LOGS THAT WILL SOLVE THIS ---
-console.log("Check 1 (Controller):", typeof userController?.login);
-console.log("Check 2 (Multer):", typeof upload?.single);
-console.log("Check 3 (Auth):", typeof authMiddleware);
+// ── Public Routes ─────────────────────────────────────────────────────────────
+router.post('/register',         upload.single('profilePicture'), userController.register);
+router.get('/verify-email',      userController.verifyEmail);
+router.post('/login',            userController.login);
+router.post('/refresh-token',    userController.refreshAccessToken);
+router.post('/forgot-password',  userController.forgotPassword);
+router.post('/reset-password',   userController.resetPassword);
 
-// --- PROTECTED ROUTING ---
-if (typeof userController.register === 'function' && typeof upload?.single === 'function') {
-    router.post('/register', upload.single('profilePicture'), userController.register);
-} else {
-    console.error("ERROR: Register or Multer is broken");
-}
-
-if (typeof userController.login === 'function') {
-    router.post('/login', userController.login);
-} else {
-    console.error("ERROR: Login function is missing");
-}
-
-if (typeof authMiddleware === 'function' && typeof userController.logout === 'function') {
-    router.post('/logout', authMiddleware, userController.logout);
-} else {
-    console.error("ERROR: AuthMiddleware or Logout is missing");
-}
+// ── Protected Routes (valid access token required) ────────────────────────────
+router.post('/logout',                                        authMiddleware, userController.logout);
+router.get('/profile',                                        authMiddleware, userController.getProfile);
+router.patch('/profile',         upload.single('profilePicture'), authMiddleware, userController.updateProfile);
+router.patch('/change-password',                              authMiddleware, userController.changePassword);
+router.delete('/account',                                     authMiddleware, userController.deleteAccount);
 
 module.exports = router;
