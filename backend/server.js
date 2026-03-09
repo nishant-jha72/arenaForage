@@ -1,7 +1,6 @@
 const dotenv = require('dotenv');
 dotenv.config();
 const userRoutes = require('./Routes/user.routes');
-
 const db = require('./DB');
 
 const express = require('express');
@@ -13,7 +12,8 @@ app.get('/', (req, res) => {
   res.send('Welcome to the Arena Forage API!');
 });
 app.use('/api/users', userRoutes);
-
+const adminRoutes = require('./Routes/Admin.routes');
+app.use('/api/admin', adminRoutes);
 app.listen(5000, () => {
   console.log('Server is running on port 5000');
 });
