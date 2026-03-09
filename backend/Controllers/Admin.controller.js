@@ -207,13 +207,14 @@ const adminController = {
                 : "Login successful. Your account is pending super admin approval. You can access the dashboard but cannot perform any actions yet.";
 
             return res
-                .status(200)
-                .cookie("adminAccessToken", accessToken, cookieOptions)
-                .cookie("adminRefreshToken", refreshToken, cookieOptions)
-                .json(new ApiResponse(200, {
-                    admin: sanitizeAdmin(admin),
-                    isVerifiedBySuperAdmin: admin.superAdminVerified === "YES",
-                }, message));
+    .status(200)
+    .cookie("adminAccessToken", accessToken, cookieOptions)
+    .cookie("adminRefreshToken", refreshToken, cookieOptions)
+    .json(new ApiResponse(200, {
+        admin: sanitizeAdmin(admin),
+        accessToken,              // ← add this
+        isVerifiedBySuperAdmin: admin.superAdminVerified === "YES",
+    }, message));
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
