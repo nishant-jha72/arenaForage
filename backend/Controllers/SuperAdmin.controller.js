@@ -522,6 +522,42 @@ const superAdminController = {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
+    getCommissionReport : async (req, res, next) => {
+    try {
+        const db = require('../DB/index');
+        const commissionRate = parseFloat(process.env.COMMISSION_RATE || 0.10);
+
+        // Per admin commission breakdown
+        const [admins] = await db.execute(`
+            SELECT 
+                id, name, organization_name,
+                tournaments_organised,
+                revenue,
+                ROUND(revenue * ?, 2) as commission_owed
+            FROM admins
+            WHERE superAdminVerified = 'YES'
+            ORDER BY revenue DESC
+        `, [commissionRate]);
+
+        const [[totals]] = await db.execute(`
+            SELECT 
+                SUM(revenue) as totalRevenue,
+                ROUND(SUM(revenue) * ?, 2) as totalCommission
+            FROM admins
+            WHERE superAdminVerified = 'YES'
+        `, [commissionRate]);
+
+        return res.status(200).json(new ApiResponse(200, {
+            commissionRate:  `${commissionRate * 100}%`,
+            totalRevenue:    totals.totalRevenue    || 0,
+            totalCommission: totals.totalCommission || 0,
+            perAdmin:        admins,
+        }, "Commission report fetched"));
+    } catch (error) {
+        next(new ApiError(error.statusCode || 500, error.message));
+    }
+}
 };
+
 
 module.exports = superAdminController;

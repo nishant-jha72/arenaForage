@@ -105,6 +105,12 @@ const TournamentSchema = new mongoose.Schema({
         team_id:   { type: mongoose.Schema.Types.ObjectId, default: null },
         team_name: { type: String, default: null },
     },
+    waitlist: [{
+    team_id:        { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
+    team_name:      { type: String },
+    leader_user_id: { type: Number },
+    joined_at:      { type: Date, default: Date.now },
+}],
 
     // Tracks if admin MySQL record has been updated after tournament ends
     admin_record_updated: { type: Boolean, default: false },

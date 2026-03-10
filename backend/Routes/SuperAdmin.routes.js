@@ -2,23 +2,26 @@ const express = require('express');
 const router = express.Router();
 
 const superAdminController = require('../Controllers/SuperAdmin.controller');
+const analyticsController = require('../Controllers/analytics.controller');
 const superAdminAuthMiddleware = require('../Middleware/SuperAdmin.auth.middleware');
 
 // ── Public Routes ─────────────────────────────────────────────────────────────
 router.post('/login',         superAdminController.login);
 router.post('/refresh-token', superAdminController.refreshAccessToken);
-// router.post('/create', superAdminController.create); NO Need of This Routes
+router.post('/create',        superAdminController.create);
 
 // ── Protected Routes ──────────────────────────────────────────────────────────
-router.use(superAdminAuthMiddleware); // All routes below require super admin auth
+router.use(superAdminAuthMiddleware);
 
 // Own profile
 router.get('/profile',              superAdminController.getProfile);
 router.patch('/change-password',    superAdminController.changePassword);
 router.post('/logout',              superAdminController.logout);
 
-// Dashboard
+// Dashboard + Analytics
 router.get('/dashboard',            superAdminController.getDashboard);
+router.get('/analytics',            analyticsController.getSuperAdminAnalytics);
+router.get('/commission',           superAdminController.getCommissionReport);
 
 // Super admin management
 router.get('/all',                  superAdminController.getAllSuperAdmins);

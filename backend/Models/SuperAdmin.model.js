@@ -2,7 +2,7 @@ const bcrypt = require('bcrypt');
 const db = require('../DB/index');
 
 const SuperAdmin = {
-
+    
     // ── Core CRUD ─────────────────────────────────────────────────────────────
 
     create: async ({ name, email, password, createdBy = null }) => {
@@ -239,6 +239,30 @@ const SuperAdmin = {
         );
         return rows;
     },
+    getCommissionStats : async () => {
+    const commissionRate = parseFloat(process.env.COMMISSION_RATE || 0.10);
+
+    const [[stats]] = await db.execute(`
+        SELECT 
+            SUM(revenue) as totalRevenue,
+            COUNT(*) as totalAdmins,
+            SUM(tournaments_organised) as totalTournaments
+        FROM admins 
+        WHERE superAdminVerified = 'YES'
+    `);
+
+    const totalRevenue   = parseFloat(stats.totalRevenue || 0);
+    const commission     = totalRevenue * commissionRate;
+
+    return {
+        totalRevenue,
+        commission,
+        commissionRate: `${commissionRate * 100}%`,
+        totalAdmins:      stats.totalAdmins,
+        totalTournaments: stats.totalTournaments,
+    };
+}
 };
+
 
 module.exports = SuperAdmin;
