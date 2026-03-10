@@ -54,6 +54,9 @@ app.use('/api/admin/login', loginLimiter);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/superadmin/login', superAdminLoginLimiter);
 
+const internalRoutes = require('./Routes/internal.main.routes');
+app.use('/api/internal', internalRoutes);
+
 // ── Global Error Handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
     const status = err.statusCode || 500;
