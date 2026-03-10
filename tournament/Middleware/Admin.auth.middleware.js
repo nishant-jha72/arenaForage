@@ -1,9 +1,8 @@
 const jwt = require('jsonwebtoken');
-const ApiError = require('../Utils/ApiError.utils');
-const Admin = require('../Models/Admin.model');
+const ApiError = require('../Utils/ApiError.util');
+const axios = require('axios');
 
 // ── Authenticate Admin ────────────────────────────────────────────────────────
-// Verifies the adminAccessToken and sets req.admin
 const adminAuthMiddleware = async (req, res, next) => {
     try {
         const token =
@@ -20,9 +19,17 @@ const adminAuthMiddleware = async (req, res, next) => {
             throw new ApiError(403, "Access denied. Not an admin token.");
         }
 
-        const admin = await Admin.findById(decoded.id);
-        if (!admin) {
-            throw new ApiError(401, "Admin not found");
+        // Fetch admin from main service instead of querying MySQL directly
+        const response = await axios.get(
+            `${process.env.MAIN_SERVICE_URL}/api/internal/admins/${decoded.id}`,
+            { headers: { "x-internal-secret": process.env.INTERNAL_SECRET } }
+        );
+
+        const admin = response.data?.data;
+        if (!admin) throw new ApiError(401, "Admin not found");
+
+        if (admin.isBanned) {
+            throw new ApiError(403, "Your account has been banned.");
         }
 
         req.admin = admin;
@@ -33,9 +40,6 @@ const adminAuthMiddleware = async (req, res, next) => {
 };
 
 // ── Require Super Admin Verification ─────────────────────────────────────────
-// Use this on top of adminAuthMiddleware for action routes
-// Admin can login and view profile, but cannot perform any actions
-// until a super admin has approved their account
 const requireSuperAdminVerification = (req, res, next) => {
     if (req.admin?.superAdminVerified !== "YES") {
         return next(new ApiError(

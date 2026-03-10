@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
 
-const tournamentController = require('../Controllers/tournament.controller');
-const teamController = require('../Controllers/team.controller');
-const { userAuthMiddleware } = require('../Middleware/user.auth.middleware');
-const { adminAuthMiddleware } = require('../Middleware/admin.auth.middleware');
+const tournamentController = require('../Controller/Tournament.controller');
+const teamController = require('../Controller/Team.controller');
+const userAuthMiddleware = require('../Middleware/user.auth.middleware');
+const { adminAuthMiddleware } = require('../Middleware/Admin.auth.middleware');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TOURNAMENT ROUTES
-// ══════════════════════════════════════════════════════════════════════════════
-
+// ════════════════════════════════════════
 // ── Public ────────────────────────────────────────────────────────────────────
 router.get('/tournaments',                tournamentController.getAll);
 router.get('/tournaments/:id',            tournamentController.getById);

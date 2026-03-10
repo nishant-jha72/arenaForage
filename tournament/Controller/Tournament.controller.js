@@ -1,7 +1,7 @@
-const Tournament = require("../Models/tournament.model");
-const Team = require("../Models/team.model");
-const ApiError = require("../Utils/ApiError.utils");
-const ApiResponse = require("../Utils/ApiResponse.utils");
+const Tournament = require("../Model/Tournament.model");
+const Team = require("../Model/Team.model");
+const ApiError = require("../Utils/ApiError.util");
+const ApiResponse = require("../Utils/ApiResponse.util");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
 

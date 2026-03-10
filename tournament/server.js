@@ -1,42 +1,49 @@
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
-const router = express.Router();
+const helmet = require('helmet');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
 
 const app = express();
-// Internal middleware — only requests from main service with shared secret allowed
-const internalAuth = (req, res, next) => {
-    const secret = req.headers['x-internal-secret'];
-    if (secret !== process.env.INTERNAL_SECRET) {
-        return res.status(403).json({ success: false, message: "Forbidden" });
-    }
-    next();
-};
+const routes = require('./Routes/Tournament.routes');
+const internalRoutes = require('./Routes/internal.routes');
 
-// Called by main service or super admin to get tournament stats
-router.get('/tournament-stats', internalAuth, async (req, res) => {
-    try {
-        const Tournament = require('../Models/tournament.model');
-        const today = new Date().toISOString().split('T')[0];
+// ── Security ──────────────────────────────────────────────────────────────────
+app.use(helmet());
+app.use(cors({
+    origin: process.env.MAIN_SERVICE_URL,
+    credentials: true,
+}));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
 
-        const [total, live, upcoming, today_count] = await Promise.all([
-            Tournament.countDocuments(),
-            Tournament.countDocuments({ status: 'live' }),
-            Tournament.countDocuments({ status: 'registration_open' }),
-            Tournament.countDocuments({
-                'schedule.start_date': {
-                    $gte: new Date(today),
-                    $lt:  new Date(new Date(today).getTime() + 86400000)
-                }
-            }),
-        ]);
+// ── Body Parsers ──────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-        res.json({ success: true, data: { total, live, upcoming, today: today_count } });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
+// ── MongoDB Connection ────────────────────────────────────────────────────────
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Connected to MongoDB Atlas'))
+    .catch((err) => console.error('MongoDB connection error:', err));
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.get('/', (req, res) => res.send('Tournament Service Running'));
+app.use('/api', routes);
+app.use('/api/internal', internalRoutes); // internal routes for main service callbacks
+
+// ── Global Error Handler ──────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+    const status = err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    console.error(`[ERROR] ${status} — ${message}`);
+    return res.status(status).json({ success: false, message });
 });
 
-app.listen(process.env.PORT || 3000, () => {
-    console.log(`Tournament service running on port ${process.env.PORT || 3000}`);
+// ── Start ─────────────────────────────────────────────────────────────────────
+app.listen(5001, () => {
+    console.log('Tournament service running on port 5001');
 });
-
-module.exports = router;
