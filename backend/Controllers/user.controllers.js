@@ -152,7 +152,10 @@ const userController = {
     login: async (req, res, next) => {
         try {
             const { gmail, password } = req.body;
-
+            
+            if (!gmail?.trim() || !password?.trim()) {
+                throw new ApiError(400, "Email and password are required");
+            }
             const user = await User.findByEmail(gmail);
             if (!user || !(await User.comparePassword(password, user.password))) {
                 throw new ApiError(401, "Invalid email or password");
