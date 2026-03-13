@@ -1,53 +1,63 @@
-const dotenv = require('dotenv');
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
+
 dotenv.config();
 
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
+// Routes
+import tournamentRoutes from "./Routes/Tournament.routes.js";
+import teamRoutes from "./Routes/Team.routes.js";
+import inviteRoutes from "./Routes/Invite.routes.js";        // ← NEW
+import internalRoutes from "./Routes/internal.routes.js";
 
 const app = express();
-const routes = require('./Routes/Tournament.routes');
-const internalRoutes = require('./Routes/internal.routes');
+const PORT = process.env.PORT || 5001;
 
 // ── Security ──────────────────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({
-    origin: process.env.MAIN_SERVICE_URL,
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     credentials: true,
-}));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+  })
+);
 
-// ── Body Parsers ──────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+// ── Body parsing ──────────────────────────────────────────────────────────────
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// ── MongoDB Connection ────────────────────────────────────────────────────────
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB Atlas'))
-    .catch((err) => console.error('MongoDB connection error:', err));
-
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.send('Tournament Service Running'));
-app.use('/api', routes);
-app.use('/api/internal', internalRoutes); // internal routes for main service callbacks
+app.use("/api/tournaments", tournamentRoutes);
+app.use("/api/teams", teamRoutes);
+app.use("/api/invites", inviteRoutes);                       // ← NEW
+app.use("/api/internal", internalRoutes);
 
-// ── Global Error Handler ──────────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-    const status = err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    console.error(`[ERROR] ${status} — ${message}`);
-    return res.status(status).json({ success: false, message });
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", service: "tournament", timestamp: new Date() });
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
-if (process.env.NODE_ENV !== 'test') {
-    app.listen(5000, () => {
-        console.log('Server is running on port 5000');
-    });
-}
+// ── Global error handler ──────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  const status = err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  return res.status(status).json({ success: false, message });
+});
 
-module.exports = app;
+// ── Connect MongoDB + start server ────────────────────────────────────────────
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log("✅ MongoDB connected");
+    app.listen(PORT, () => {
+      console.log(`✅ Tournament service running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection failed:", err.message);
+    process.exit(1);
+  });

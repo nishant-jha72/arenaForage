@@ -1259,9 +1259,238 @@ backend/
 
 ---
 
+# 📋 ArenaForage — Dev Log — March 13, 2026
+
+## Tournament Service — Invite-Based Team Registration System
+
+---
+
+## 🏗️ What Was Built Today
+
+A complete **invite token system** for tournament team registration. Instead of a team leader directly adding players, the leader registers the team and receives 4 shareable links. Players join by clicking their link — but must have an ArenaForage account first.
+
+---
+
+## 🔀 The Complete User Flow
+
+```
+LEADER FLOW
+──────────────────────────────────────────────────────
+1. Leader visits /tournaments/:id
+2. Clicks "Register Team"
+3. Submits Team Name + Tag
+4. POST /api/tournaments/:id/register
+5. Backend creates team entry + 4 invite tokens
+6. Leader receives 4 shareable links:
+     arenaforage.com/join?token=abc123  ← Primary Slot 2
+     arenaforage.com/join?token=def456  ← Primary Slot 3
+     arenaforage.com/join?token=ghi789  ← Primary Slot 4
+     arenaforage.com/join?token=jkl012  ← Extra Slot 5
+   Leader auto-fills Slot 1 (no invite needed)
+
+PLAYER FLOW
+──────────────────────────────────────────────────────
+1. Player receives link on WhatsApp / Discord
+2. Visits arenaforage.com/join?token=abc123
+3. Frontend calls GET /api/invites/:token (public)
+
+   IF token invalid/expired → Show error page
+   IF token valid → Show "Join Team GODLIKE" card
+
+4a. Player is already logged in
+    → One-click "Accept & Join"
+    → POST /api/invites/:token/accept → done ✅
+
+4b. Player is NOT logged in
+    → Token saved, redirected to /register or /login
+    → After auth, redirected back to /join?token=abc123
+    → POST /api/invites/:token/accept → done ✅
+```
+
+---
+
+## ✅ Files Created / Modified Today
+
+### Tournament Service (`arenaForage/tournament/`)
+
+```
+tournament/
+├── Model/
+│   └── Invite.model.js              ← NEW
+├── Controller/
+│   ├── Tournament.controller.js     ← UPDATED (3 invite hooks added)
+│   └── Invite.controller.js         ← NEW
+├── Routes/
+│   ├── Tournament.routes.js         ← UPDATED
+│   └── Invite.routes.js             ← NEW
+└── Utils/
+    └── inviteHooks.js               ← NEW
+```
+
+### Main Backend (`arenaForage/backend/`)
+
+```
+backend/
+└── Routes/
+    └── internal.routes.js           ← UPDATED (bulk notify + email support)
+```
+
+---
+
+## 📦 New Model — `Invite.model.js`
+
+Stores one document per invite slot per team registration.
+
+```
+invites collection:
+{
+  token,               // crypto random hex — goes in the shareable link
+  tournamentId,        // which tournament
+  tournamentName,      // denormalized for convenience
+  registrationId,      // _id of subdocument inside tournament.teams array
+  teamName,
+  teamTag,
+  leaderUserId,        // MySQL users.id
+  leaderUsername,
+  slotNumber,          // 1-5 (1 = leader auto-filled, 2-4 = primary, 5 = extra)
+  role,                // "primary" | "extra"
+  status,              // "pending" | "accepted" | "expired" | "cancelled"
+  registrationClosesAt,// null = valid until admin manually closes registration
+  acceptedBy: {        // filled when player accepts
+    userId,
+    username,
+    email,
+    acceptedAt
+  }
+}
+```
+
+### Key Design Decision — Token Expiry
+Tokens do **not** use a fixed 48hr timer. They are valid **until tournament registration closes**. This is cleaner because:
+- Leader doesn't need to worry about tokens expiring while registration is still open
+- All tokens are invalidated automatically the moment admin publishes room credentials or cancels the tournament
+
+### Static Methods Added
+| Method | When Called |
+|--------|-------------|
+| `Invite.findValid(token)` | On every validate/accept request |
+| `Invite.expireAllForTournament(id)` | When registration closes |
+| `Invite.updateCloseDateForTournament(id, date)` | When admin opens registration |
+
+---
+
+## 📡 New API Endpoints
+
+### Tournament Service (Port 5001)
+
+| Method | Route | Auth | Purpose |
+|--------|-------|------|---------|
+| `POST` | `/api/tournaments/:id/register` | ✅ User | Leader registers team → returns 4 invite links |
+| `GET` | `/api/tournaments/:id/my-registration` | ✅ User | Leader views roster + invite statuses |
+| `GET` | `/api/invites/:token` | ❌ Public | Validate a token before showing join page |
+| `POST` | `/api/invites/:token/accept` | ✅ User | Player accepts invite and joins slot |
+| `DELETE` | `/api/invites/:token` | ✅ User | Leader cancels an invite link |
+| `POST` | `/api/invites/:token/regenerate` | ✅ User | Leader regenerates a cancelled/expired link |
+
+### Main Backend (Port 5000)
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| `POST` | `/api/internal/notify/bulk` | NEW — notify multiple users at once |
+
+---
+
+## 🔧 Tournament Controller Changes
+
+Only 3 lines added to your existing `Tournament.controller.js`. Everything else untouched.
+
+| Method | Change |
+|--------|--------|
+| `openRegistration` | `await onRegistrationOpened(tournament._id, closesAt)` added |
+| `publishRoom` | `await onRegistrationClosed(tournament._id)` added |
+| `cancel` | `await onRegistrationClosed(tournament._id)` added |
+
+### What Each Hook Does
+```
+onRegistrationOpened(id, closesAt)
+  → Syncs registrationClosesAt to all pending invites for this tournament
+
+onRegistrationClosed(id)
+  → Sets status = "expired" on all pending invites immediately
+  → Called when: room published, tournament cancelled
+```
+
+---
+
+## ⚠️ Edge Cases Handled
+
+| Scenario | Response |
+|----------|----------|
+| Player already in another team for this tournament | `409 — You are already registered with another team` |
+| Token already accepted | `409 — This slot has already been filled` |
+| Token expired (registration closed) | `410 — Tournament registration has closed` |
+| Token cancelled | `410 — This invite link has been cancelled` |
+| Leader tries to accept their own invite | `400 — You are the team leader, already in Slot 1` |
+| Tournament full when leader tries to register | `400 — Tournament is full, join waitlist instead` |
+| Regenerate on an accepted slot | `400 — Slot is already filled, no need to regenerate` |
+
+---
+
+## 🐛 Bugs Fixed Today
+
+| Bug | Cause | Fix |
+|-----|-------|-----|
+| `argument handler must be a function` on routes load | `authMiddleware` imported with `{}` destructuring but is a default export | Changed to `const authMiddleware = require(...)` without destructuring |
+| `adminAuthMiddleware` undefined | Opposite problem — exported as named export but imported without `{}` | Changed to `const { adminAuthMiddleware } = require(...)` |
+| `cancelTournament` undefined in routes | Route file used wrong method name | Corrected to `tournamentController.cancel` to match controller export |
+| All previous ESM `import/export` errors | Files generated with ESM syntax but project uses CommonJS | Rewrote all new files using `require` / `module.exports` |
+
+### Root Cause Summary
+> Always check **how a file does its `module.exports`** before importing it.
+> - `module.exports = fn` → import without `{}`
+> - `module.exports = { fn }` → import with `{}`
+
+---
+
+## 🧪 Postman Test Order
+
+```
+1. POST  localhost:5000/api/users/login
+         → get user token (this user will be team leader)
+
+2. POST  localhost:5001/api/tournaments/:id/register
+         Body: { teamName: "GODLIKE", teamTag: "GDL" }
+         → returns 4 invite links
+
+3. GET   localhost:5001/api/invites/:token
+         → validate link (no auth needed)
+         → confirms team name, slot, role
+
+4. POST  localhost:5000/api/users/login (different account)
+         → get user token (this user is the invited player)
+
+5. POST  localhost:5001/api/invites/:token/accept
+         → player joins the slot
+         → both leader and player get notifications
+
+6. GET   localhost:5001/api/tournaments/:id/my-registration
+         → leader sees full roster with slot statuses
+
+7. POST  localhost:5001/api/invites/:token/regenerate
+         → leader gets a fresh link for an empty slot
+
+8. PATCH localhost:5001/api/tournaments/:id/publish-room
+         Body: { room_id: "ARENA123", password: "secret" }
+         → all pending tokens expire immediately
+         → confirmed leaders get room credentials by email
+```
+
+---
+
 ## 🔜 Next Steps
-- [ ] Input validation (Joi / express-validator)
-- [ ] Winston logging for production
-- [ ] Jest + Supertest automated tests
-- [ ] Payment gateway (Razorpay / Stripe)
-- [ ] Deploy backend service
+
+- [ ] Frontend — `JoinPage.jsx` (`/join?token=...`)
+- [ ] Frontend — Rebuild `TournamentRegistrationPage.jsx` (show generated invite links)
+- [ ] Frontend — Wire `POST /api/tournaments/:id/register` to registration page
+- [ ] Frontend — Token preservation through auth flow (`?next=/join?token=...`)
+- [ ] Add `ProtectedRoute` wrapper on `/dashboard` in `App.jsx`

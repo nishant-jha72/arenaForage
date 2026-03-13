@@ -1,57 +1,76 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-const tournamentController = require('../Controller/Tournament.controller');
-const teamController = require('../Controller/Team.controller');
-const bracketController = require('../Controller/Bracket.controller');
-const { joinWaitlist } = require('../Controller/Waitlist.controller');
-const userAuthMiddleware = require('../Middleware/user.auth.middleware');
-const { adminAuthMiddleware } = require('../Middleware/Admin.auth.middleware');
+const tournamentController = require("../Controller/Tournament.controller");
+const inviteController     = require("../Controller/Invite.controller");
+const waitlistController   = require("../Controller/Waitlist.controller");
+const bracketController    = require("../Controller/Bracket.controller");
 
-// ══════════════════════════════════════════════════════════════════════════════
-// TOURNAMENT ROUTES
-// ══════════════════════════════════════════════════════════════════════════════
+// Import directly without destructuring — matches your middleware export style
+const authMiddleware      = require("../Middleware/user.auth.middleware");
+const {adminAuthMiddleware} = require("../Middleware/Admin.auth.middleware");
+
+// ── Debug guard ───────────────────────────────────────────────────────────────
+const check = (name, fn) => {
+    if (typeof fn !== "function") {
+        throw new Error(`[Routes] "${name}" is NOT a function — got: ${typeof fn}. Check exports in its controller.`);
+    }
+    return fn;
+};
+
+const getAll             = check("getAll",             tournamentController.getAll);
+const getById            = check("getById",            tournamentController.getById);
+const getLeaderboard     = check("getLeaderboard",     tournamentController.getLeaderboard);
+const getRoomCredentials = check("getRoomCredentials", tournamentController.getRoomCredentials);
+const create             = check("create",             tournamentController.create);
+const update             = check("update",             tournamentController.update);
+const openRegistration   = check("openRegistration",   tournamentController.openRegistration);
+const publishRoom        = check("publishRoom",        tournamentController.publishRoom);
+const setLive            = check("setLive",            tournamentController.setLive);
+const completeTournament = check("completeTournament", tournamentController.completeTournament);
+const cancel             = check("cancel",             tournamentController.cancel);
+const confirmTeam        = check("confirmTeam",        tournamentController.confirmTeam);
+const verifyPlayer       = check("verifyPlayer",       tournamentController.verifyPlayer);
+const submitScores       = check("submitScores",       tournamentController.submitScores);
+
+const registerTeam        = check("registerTeam",        inviteController.registerTeam);
+const getMyRegistration   = check("getMyRegistration",   inviteController.getMyRegistration);
+
+const joinWaitlist        = check("joinWaitlist",        waitlistController.joinWaitlist);
+const promoteFromWaitlist = check("promoteFromWaitlist", waitlistController.promoteFromWaitlist);
+
+const getResults          = check("getResults",          bracketController.getResults);
+const getBracket          = check("getBracket",          bracketController.getBracket);
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Public ────────────────────────────────────────────────────────────────────
-router.get('/tournaments',                          tournamentController.getAll);
-router.get('/tournaments/:id',                      tournamentController.getById);
-router.get('/tournaments/:id/leaderboard',          tournamentController.getLeaderboard);
-router.get('/tournaments/:id/results',              bracketController.getResults);
-router.get('/tournaments/:id/bracket',              bracketController.getBracket);
+router.get("/",                                                        getAll);
+router.get("/:id",                                                     getById);
+router.get("/:id/leaderboard",                                         getLeaderboard);
+router.get("/:id/results",                                             getResults);
+router.get("/:id/bracket",                                             getBracket);
 
-// ── User Protected ────────────────────────────────────────────────────────────
-router.post('/tournaments/:id/register',            userAuthMiddleware, tournamentController.registerTeam);
-router.post('/tournaments/:id/waitlist',            userAuthMiddleware, joinWaitlist);
-router.get('/tournaments/:id/room',                 userAuthMiddleware, tournamentController.getRoomCredentials);
+// ── User — Protected ──────────────────────────────────────────────────────────
+router.post("/:id/register",               authMiddleware,             registerTeam);
+router.get("/:id/my-registration",         authMiddleware,             getMyRegistration);
+router.get("/:id/room",                    authMiddleware,             getRoomCredentials);
+router.post("/:id/waitlist",               authMiddleware,             joinWaitlist);
 
-// ── Admin Protected ───────────────────────────────────────────────────────────
-router.post('/tournaments',                         adminAuthMiddleware, tournamentController.create);
-router.patch('/tournaments/:id',                    adminAuthMiddleware, tournamentController.update);
-router.patch('/tournaments/:id/open-registration',  adminAuthMiddleware, tournamentController.openRegistration);
-router.patch('/tournaments/:id/publish-room',       adminAuthMiddleware, tournamentController.publishRoom);
-router.patch('/tournaments/:id/live',               adminAuthMiddleware, tournamentController.setLive);
-router.patch('/tournaments/:id/complete',           adminAuthMiddleware, tournamentController.completeTournament);
-router.patch('/tournaments/:id/cancel',             adminAuthMiddleware, tournamentController.cancel);
-router.patch('/tournaments/:id/waitlist/promote',   adminAuthMiddleware, async (req, res, next) => {
-    const { promoteFromWaitlist } = require('../Controller/Waitlist.controller');
-    const result = await promoteFromWaitlist(req.params.id, req.admin.id);
-    if (!result) return res.status(404).json({ success: false, message: "Waitlist is empty" });
-    return res.status(200).json({ success: true, message: `${result.team_name} promoted from waitlist` });
-});
-router.patch('/tournaments/:id/teams/:teamId/confirm',                        adminAuthMiddleware, tournamentController.confirmTeam);
-router.patch('/tournaments/:id/teams/:teamId/players/:userId/verify',         adminAuthMiddleware, tournamentController.verifyPlayer);
-router.post('/tournaments/:id/scores',                                         adminAuthMiddleware, tournamentController.submitScores);
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TEAM ROUTES
-// ══════════════════════════════════════════════════════════════════════════════
-
-router.get('/teams/:id',                teamController.getById);
-router.post('/teams',                   userAuthMiddleware, teamController.create);
-router.get('/teams/my',                 userAuthMiddleware, teamController.getMyTeam);
-router.post('/teams/invite',            userAuthMiddleware, teamController.inviteMember);
-router.delete('/teams/leave',           userAuthMiddleware, teamController.leaveTeam);
-router.delete('/teams',                 userAuthMiddleware, teamController.disband);
-router.delete('/teams/members/:userId', userAuthMiddleware, teamController.removeMember);
+// ── Admin — Protected ─────────────────────────────────────────────────────────
+router.post("/",                           adminAuthMiddleware,         create);
+router.patch("/:id",                       adminAuthMiddleware,         update);
+router.patch("/:id/open-registration",     adminAuthMiddleware,         openRegistration);
+router.patch("/:id/publish-room",          adminAuthMiddleware,         publishRoom);
+router.patch("/:id/live",                  adminAuthMiddleware,         setLive);
+router.patch("/:id/complete",              adminAuthMiddleware,         completeTournament);
+router.patch("/:id/cancel",               adminAuthMiddleware,          cancel);
+router.patch("/:id/waitlist/promote",      adminAuthMiddleware,         promoteFromWaitlist);
+router.patch("/:id/teams/:teamId/confirm", adminAuthMiddleware,         confirmTeam);
+router.patch(
+    "/:id/teams/:teamId/players/:userId/verify",
+    adminAuthMiddleware,
+    verifyPlayer
+);
+router.post("/:id/scores",                 adminAuthMiddleware,         submitScores);
 
 module.exports = router;
