@@ -9,10 +9,15 @@ import TournamentsPage      from "./pages/TournamentsPage";
 import TournamentDetailPage from "./pages/TournamentDetailPage";
 import LeaderboardPage      from "./pages/LeaderboardPage";
 import TournamentRegistrationPage from "./components/TournamentRegistration";
+import AdminRegisterPage from "./pages/Admin/AdminRegister";
+import AdminLoginPage from "./pages/Admin/AdminLogin";
+import AdminDashboard from "./pages/Admin/AdminDashboard";
+import { AuthProvider } from "./context/AuthContext";
 export default function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
+      <AuthProvider>
+              <BrowserRouter>
         <Routes>
           {/* Public */}
           <Route path="/"                element={<HomePage />}                              />
@@ -25,8 +30,13 @@ export default function App() {
 
           {/* Protected — add auth guard later */}
           <Route path="/dashboard"       element={<DashboardPage />}                         />
+          <Route path="/admin/register"  element={<AdminRegisterPage />}                       />
+          <Route path="/admin/login"     element={<AdminLoginPage />}                          />
+          <Route path="/admin/dashboard" element={<AdminDashboard />}                          />
         </Routes>
       </BrowserRouter>
+
+      </AuthProvider>
     </ThemeProvider>
   );
 }
