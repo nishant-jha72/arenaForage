@@ -1,11 +1,10 @@
 const Tournament = require("../Model/Tournament.model");
-const Team = require("../Model/Team.model");
-const ApiError = require("../Utils/ApiError.util");
+const Team       = require("../Model/Team.model");
+const ApiError   = require("../Utils/ApiError.util");
 const ApiResponse = require("../Utils/ApiResponse.util");
-const axios = require("axios");
+const axios      = require("axios");
 const nodemailer = require("nodemailer");
 
-// ─── NEW: Import invite hooks ─────────────────────────────────────────────────
 const {
     onRegistrationOpened,
     onRegistrationClosed,
@@ -21,17 +20,12 @@ const sendEmail = async ({ to, subject, text }) => {
     await transporter.sendMail({ from: process.env.EMAIL_USER, to, subject, text });
 };
 
-// Calls main MySQL service to update admin's tournaments_organised and revenue
 const updateAdminRecord = async (adminId, revenueEarned) => {
     try {
         await axios.post(
             `${process.env.MAIN_SERVICE_URL}/api/internal/admin/record-tournament`,
             { adminId, revenueEarned },
-            {
-                headers: {
-                    "x-internal-secret": process.env.INTERNAL_SECRET,
-                },
-            }
+            { headers: { "x-internal-secret": process.env.INTERNAL_SECRET } }
         );
     } catch (error) {
         console.error("Failed to update admin record in main service:", error.message);
@@ -43,11 +37,128 @@ const updateAdminRecord = async (adminId, revenueEarned) => {
 const tournamentController = {
 
     // ══════════════════════════════════════════════════════════════════════════
-    // ADMIN — TOURNAMENT MANAGEMENT
+    // PUBLIC — GET ALL TOURNAMENTS
+    // GET /api/tournaments
+    // Supports: ?admin_id=5 ?status=live ?game=BGMI ?page=1 ?limit=10
     // ══════════════════════════════════════════════════════════════════════════
+    getAll: async (req, res, next) => {
+        try {
+            const { admin_id, status, game, page = 1, limit = 50 } = req.query;
 
-    // ── CREATE TOURNAMENT ─────────────────────────────────────────────────────
+            const filter = {};
+
+            // Filter by admin — used by admin dashboard to show only their tournaments
+            if (admin_id) filter.admin_id = Number(admin_id);
+
+            // Filter by status — used by public tournament listing page
+            if (status) filter.status = status;
+
+            // Filter by game — case-insensitive search
+            if (game) filter.game = new RegExp(game, "i");
+
+            const tournaments = await Tournament.find(filter)
+                .select("-room.password -scores.raw_data") // never expose room password publicly
+                .sort({ "schedule.start_date": 1 })
+                .skip((+page - 1) * +limit)
+                .limit(+limit);
+
+            const total = await Tournament.countDocuments(filter);
+
+            return res.status(200).json(
+  new ApiResponse(200, {
+    tournaments,   // ← nested inside data object
+    total,
+    page,
+    limit,
+  }, "Tournaments fetched")
+);
+        } catch (error) {
+            next(new ApiError(error.statusCode || 500, error.message));
+        }
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PUBLIC — GET SINGLE TOURNAMENT
+    // GET /api/tournaments/:id
+    // ══════════════════════════════════════════════════════════════════════════
+    getById: async (req, res, next) => {
+        try {
+            const tournament = await Tournament.findById(req.params.id)
+                .select("-room.password -scores.raw_data");
+
+            if (!tournament) throw new ApiError(404, "Tournament not found");
+
+            return res.status(200).json(
+                new ApiResponse(200, { tournament }, "Tournament fetched")
+            );
+        } catch (error) {
+            next(new ApiError(error.statusCode || 500, error.message));
+        }
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PUBLIC — GET LEADERBOARD
+    // GET /api/tournaments/:id/leaderboard
+    // ══════════════════════════════════════════════════════════════════════════
+    getLeaderboard: async (req, res, next) => {
+        try {
+            const tournament = await Tournament.findById(req.params.id)
+                .select("scores title status winner");
+
+            if (!tournament) throw new ApiError(404, "Tournament not found");
+
+            return res.status(200).json(
+                new ApiResponse(200, {
+                    title:  tournament.title,
+                    status: tournament.status,
+                    winner: tournament.winner,
+                    scores: tournament.scores.map(s => ({
+                        rank:      s.rank,
+                        team_name: s.team_name,
+                        score:     s.score,
+                    })),
+                }, "Leaderboard fetched")
+            );
+        } catch (error) {
+            next(new ApiError(error.statusCode || 500, error.message));
+        }
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // USER — GET ROOM CREDENTIALS
+    // GET /api/tournaments/:id/room
+    // ══════════════════════════════════════════════════════════════════════════
+    getRoomCredentials: async (req, res, next) => {
+        try {
+            const tournament = await Tournament.findById(req.params.id);
+            if (!tournament) throw new ApiError(404, "Tournament not found");
+
+            if (!tournament.room?.room_id) {
+                throw new ApiError(404, "Room credentials have not been published yet");
+            }
+
+            const team = tournament.teams.find(
+                t => t.leader_user_id === req.user.id && t.is_confirmed
+            );
+            if (!team) {
+                throw new ApiError(403, "Only confirmed team leaders can view room credentials");
+            }
+
+            return res.status(200).json(
+                new ApiResponse(200, {
+                    room_id:  tournament.room.room_id,
+                    password: tournament.room.password,
+                }, "Room credentials fetched")
+            );
+        } catch (error) {
+            next(new ApiError(error.statusCode || 500, error.message));
+        }
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — CREATE TOURNAMENT
     // POST /api/tournaments
+    // ══════════════════════════════════════════════════════════════════════════
     create: async (req, res, next) => {
         try {
             const {
@@ -71,10 +182,10 @@ const tournamentController = {
             const tournament = await Tournament.create({
                 title,
                 game,
-                description: description || "",
-                admin_id:    req.admin.id,
-                admin_name:  req.admin.name,
-                status:      "draft",
+                description:  description || "",
+                admin_id:     req.admin.id,
+                admin_name:   req.admin.name,
+                status:       "draft",
                 registration: {
                     start_date:   new Date(registration_start),
                     end_date:     new Date(registration_end),
@@ -103,8 +214,10 @@ const tournamentController = {
         }
     },
 
-    // ── UPDATE TOURNAMENT (only while in draft) ───────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — UPDATE TOURNAMENT (draft only)
     // PATCH /api/tournaments/:id
+    // ══════════════════════════════════════════════════════════════════════════
     update: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
@@ -113,60 +226,61 @@ const tournamentController = {
             if (tournament.admin_id !== req.admin.id) {
                 throw new ApiError(403, "You can only update your own tournaments");
             }
-
-            if (!["draft"].includes(tournament.status)) {
+            if (tournament.status !== "draft") {
                 throw new ApiError(400, "Tournament can only be updated while in draft status");
             }
 
             const allowedFields = [
                 "title", "game", "description", "banner_url",
-                "registration", "schedule", "prize_pool"
+                "registration", "schedule", "prize_pool",
             ];
-
             allowedFields.forEach(field => {
-                if (req.body[field] !== undefined) {
-                    tournament[field] = req.body[field];
-                }
+                if (req.body[field] !== undefined) tournament[field] = req.body[field];
             });
 
             await tournament.save();
-            return res.status(200).json(new ApiResponse(200, { tournament }, "Tournament updated successfully"));
+            return res.status(200).json(
+                new ApiResponse(200, { tournament }, "Tournament updated successfully")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── OPEN REGISTRATION ─────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — OPEN REGISTRATION
     // PATCH /api/tournaments/:id/open-registration
-    // ── CHANGED: added onRegistrationOpened() hook ────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
     openRegistration: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
             if (!tournament) throw new ApiError(404, "Tournament not found");
             if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-            if (tournament.status !== "draft") throw new ApiError(400, "Only draft tournaments can be opened for registration");
+            if (tournament.status !== "draft") {
+                throw new ApiError(400, "Only draft tournaments can be opened for registration");
+            }
 
             tournament.status = "registration_open";
             await tournament.save();
 
-            // Sync the registration close date to any existing invite docs.
-            // registration.end_date is the close date set at tournament creation.
             const closesAt = tournament.registration?.end_date || null;
             await onRegistrationOpened(tournament._id, closesAt);
 
-            return res.status(200).json(new ApiResponse(200, {}, "Registration opened successfully"));
+            return res.status(200).json(
+                new ApiResponse(200, {}, "Registration opened successfully")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── PUBLISH ROOM CREDENTIALS ──────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — PUBLISH ROOM CREDENTIALS
     // PATCH /api/tournaments/:id/publish-room
-    // ── CHANGED: added onRegistrationClosed() hook ────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
     publishRoom: async (req, res, next) => {
         try {
             const { room_id, password } = req.body;
-
             if (!room_id || !password) {
                 throw new ApiError(400, "Room ID and password are required");
             }
@@ -174,7 +288,6 @@ const tournamentController = {
             const tournament = await Tournament.findById(req.params.id);
             if (!tournament) throw new ApiError(404, "Tournament not found");
             if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-
             if (!["registration_open", "registration_closed"].includes(tournament.status)) {
                 throw new ApiError(400, "Cannot publish room for a tournament in current status");
             }
@@ -188,7 +301,6 @@ const tournamentController = {
             tournament.status = "registration_closed";
             await tournament.save();
 
-            // Expire all pending invite tokens — registration is now closed
             await onRegistrationClosed(tournament._id);
 
             // Email all confirmed team leaders
@@ -199,12 +311,12 @@ const tournamentController = {
                         `${process.env.MAIN_SERVICE_URL}/api/internal/users/${team.leader_user_id}`,
                         { headers: { "x-internal-secret": process.env.INTERNAL_SECRET } }
                     );
-                    const leaderEmail = response.data?.data?.gmail;
+                    const leaderEmail = response.data?.data?.email;
                     if (leaderEmail) {
                         await sendEmail({
-                            to: leaderEmail,
+                            to:      leaderEmail,
                             subject: `Room Credentials — ${tournament.title}`,
-                            text: `Hello ${team.team_name} Captain,\n\nYour room credentials for ${tournament.title} are ready:\n\nRoom ID: ${room_id}\nPassword: ${password}\n\nTournament starts at: ${tournament.schedule.start_date}\n\nOnly verified players from your team are allowed to join.\n\nGood luck!`,
+                            text:    `Hello ${team.team_name} Captain,\n\nYour room credentials for ${tournament.title} are ready:\n\nRoom ID: ${room_id}\nPassword: ${password}\n\nTournament starts at: ${tournament.schedule.start_date}\n\nOnly verified players from your team are allowed to join.\n\nGood luck!`,
                         });
                     }
                 } catch (err) {
@@ -215,102 +327,50 @@ const tournamentController = {
             await Promise.allSettled(emailPromises);
 
             return res.status(200).json(
-                new ApiResponse(200, { room_id, password }, `Room credentials published and emailed to ${confirmedTeams.length} team leaders`)
+                new ApiResponse(200, { room_id, password },
+                    `Room credentials published and emailed to ${confirmedTeams.length} team leaders`)
             );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── VERIFY PLAYER ─────────────────────────────────────────────────────────
-    // PATCH /api/tournaments/:id/teams/:teamId/players/:userId/verify
-    verifyPlayer: async (req, res, next) => {
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — SET LIVE
+    // PATCH /api/tournaments/:id/live
+    // ══════════════════════════════════════════════════════════════════════════
+    setLive: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
             if (!tournament) throw new ApiError(404, "Tournament not found");
             if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-
-            const team = tournament.teams.find(t => t.team_id.toString() === req.params.teamId);
-            if (!team) throw new ApiError(404, "Team not found in this tournament");
-
-            const player = team.players.find(p => p.user_id === +req.params.userId);
-            if (!player) throw new ApiError(404, "Player not found in this team");
-
-            const verifiedCount = team.players.filter(p => p.is_verified && !p.is_extra).length;
-            if (!player.is_extra && verifiedCount >= 5) {
-                throw new ApiError(400, "This team already has 5 verified players");
+            if (tournament.status !== "registration_closed") {
+                throw new ApiError(400, "Tournament must have registration closed before going live");
             }
 
-            player.is_verified = true;
+            tournament.status = "live";
             await tournament.save();
 
-            return res.status(200).json(new ApiResponse(200, {}, "Player verified successfully"));
+            return res.status(200).json(
+                new ApiResponse(200, {}, "Tournament is now live")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── CONFIRM TEAM ──────────────────────────────────────────────────────────
-    // PATCH /api/tournaments/:id/teams/:teamId/confirm
-    confirmTeam: async (req, res, next) => {
-        try {
-            const tournament = await Tournament.findById(req.params.id);
-            if (!tournament) throw new ApiError(404, "Tournament not found");
-            if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-
-            const team = tournament.teams.find(t => t.team_id.toString() === req.params.teamId);
-            if (!team) throw new ApiError(404, "Team not found");
-
-            const confirmedTeams = tournament.teams.filter(t => t.is_confirmed).length;
-            if (confirmedTeams >= 12) throw new ApiError(400, "Maximum 12 teams already confirmed");
-
-            team.is_confirmed = true;
-            await tournament.save();
-
-            return res.status(200).json(new ApiResponse(200, {}, "Team confirmed successfully"));
-        } catch (error) {
-            next(new ApiError(error.statusCode || 500, error.message));
-        }
-    },
-
-    // ── SUBMIT SCORES ─────────────────────────────────────────────────────────
-    // POST /api/tournaments/:id/scores
-    submitScores: async (req, res, next) => {
-        try {
-            const { scores } = req.body;
-
-            if (!scores || !Array.isArray(scores)) {
-                throw new ApiError(400, "Scores array is required");
-            }
-
-            const tournament = await Tournament.findById(req.params.id);
-            if (!tournament) throw new ApiError(404, "Tournament not found");
-            if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-            if (tournament.status !== "live") throw new ApiError(400, "Can only submit scores for live tournaments");
-
-            const ranked = [...scores].sort((a, b) => b.score - a.score).map((s, i) => ({
-                ...s,
-                rank: i + 1,
-                updated_at: new Date(),
-            }));
-
-            tournament.scores = ranked;
-            await tournament.save();
-
-            return res.status(200).json(new ApiResponse(200, { scores: ranked }, "Scores submitted successfully"));
-        } catch (error) {
-            next(new ApiError(error.statusCode || 500, error.message));
-        }
-    },
-
-    // ── COMPLETE TOURNAMENT ───────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — COMPLETE TOURNAMENT
     // PATCH /api/tournaments/:id/complete
+    // ══════════════════════════════════════════════════════════════════════════
     completeTournament: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
             if (!tournament) throw new ApiError(404, "Tournament not found");
             if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-            if (tournament.status !== "live") throw new ApiError(400, "Only live tournaments can be completed");
+            if (tournament.status !== "live") {
+                throw new ApiError(400, "Only live tournaments can be completed");
+            }
 
             if (tournament.scores.length > 0) {
                 const winner = tournament.scores.find(s => s.rank === 1);
@@ -332,9 +392,12 @@ const tournamentController = {
 
             await tournament.save();
 
+            // Update team tournament history in MongoDB
             await Promise.allSettled(
                 tournament.teams.filter(t => t.is_confirmed).map(async (team) => {
-                    const score = tournament.scores.find(s => s.team_id.toString() === team.team_id.toString());
+                    const score = tournament.scores.find(
+                        s => s.team_id?.toString() === team.team_id?.toString()
+                    );
                     await Team.findByIdAndUpdate(team.team_id, {
                         $push: {
                             tournament_history: {
@@ -343,12 +406,13 @@ const tournamentController = {
                                 result:        score?.rank === 1 ? "win" : "loss",
                                 rank:          score?.rank || null,
                                 played_at:     new Date(),
-                            }
-                        }
+                            },
+                        },
                     });
                 })
             );
 
+            // Update admin revenue + tournament count in MySQL (once only)
             if (!tournament.admin_record_updated) {
                 await updateAdminRecord(tournament.admin_id, revenue);
                 tournament.admin_record_updated = true;
@@ -356,19 +420,18 @@ const tournamentController = {
             }
 
             return res.status(200).json(
-                new ApiResponse(200, {
-                    winner: tournament.winner,
-                    revenue,
-                }, "Tournament completed successfully")
+                new ApiResponse(200, { winner: tournament.winner, revenue },
+                    "Tournament completed successfully")
             );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── CANCEL TOURNAMENT ─────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — CANCEL TOURNAMENT
     // PATCH /api/tournaments/:id/cancel
-    // ── CHANGED: added onRegistrationClosed() hook ────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
     cancel: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
@@ -381,117 +444,109 @@ const tournamentController = {
             tournament.status = "cancelled";
             await tournament.save();
 
-            // Expire all pending invite tokens immediately
             await onRegistrationClosed(tournament._id);
 
-            return res.status(200).json(new ApiResponse(200, {}, "Tournament cancelled successfully"));
+            return res.status(200).json(
+                new ApiResponse(200, {}, "Tournament cancelled successfully")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── SET LIVE ──────────────────────────────────────────────────────────────
-    // PATCH /api/tournaments/:id/live
-    setLive: async (req, res, next) => {
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — CONFIRM TEAM
+    // PATCH /api/tournaments/:id/teams/:teamId/confirm
+    // ══════════════════════════════════════════════════════════════════════════
+    confirmTeam: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
             if (!tournament) throw new ApiError(404, "Tournament not found");
             if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
-            if (tournament.status !== "registration_closed") {
-                throw new ApiError(400, "Tournament must have registration closed before going live");
+
+            const team = tournament.teams.find(
+                t => t.team_id?.toString() === req.params.teamId
+            );
+            if (!team) throw new ApiError(404, "Team not found");
+
+            const confirmedCount = tournament.teams.filter(t => t.is_confirmed).length;
+            if (confirmedCount >= 12) {
+                throw new ApiError(400, "Maximum 12 teams already confirmed");
             }
 
-            tournament.status = "live";
+            team.is_confirmed = true;
             await tournament.save();
 
-            return res.status(200).json(new ApiResponse(200, {}, "Tournament is now live"));
+            return res.status(200).json(
+                new ApiResponse(200, {}, "Team confirmed successfully")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
     // ══════════════════════════════════════════════════════════════════════════
-    // USER — REGISTRATION & VIEWING
+    // ADMIN — VERIFY PLAYER
+    // PATCH /api/tournaments/:id/teams/:teamId/players/:userId/verify
     // ══════════════════════════════════════════════════════════════════════════
-
-    // ── GET ALL TOURNAMENTS (public) ──────────────────────────────────────────
-    getAll: async (req, res, next) => {
-        try {
-            const { status, page = 1, limit = 10, game } = req.query;
-            const filter = {};
-            if (status) filter.status = status;
-            if (game) filter.game = new RegExp(game, "i");
-
-            const tournaments = await Tournament.find(filter)
-                .select("-teams -scores -room.password")
-                .sort({ "schedule.start_date": 1 })
-                .skip((page - 1) * limit)
-                .limit(+limit);
-
-            const total = await Tournament.countDocuments(filter);
-
-            return res.status(200).json(new ApiResponse(200, { tournaments, total, page: +page, limit: +limit }, "Tournaments fetched"));
-        } catch (error) {
-            next(new ApiError(error.statusCode || 500, error.message));
-        }
-    },
-
-    // ── GET SINGLE TOURNAMENT ─────────────────────────────────────────────────
-    getById: async (req, res, next) => {
-        try {
-            const tournament = await Tournament.findById(req.params.id)
-                .select("-room.password -scores.raw_data");
-
-            if (!tournament) throw new ApiError(404, "Tournament not found");
-
-            return res.status(200).json(new ApiResponse(200, { tournament }, "Tournament fetched"));
-        } catch (error) {
-            next(new ApiError(error.statusCode || 500, error.message));
-        }
-    },
-
-    // ── GET ROOM CREDENTIALS ──────────────────────────────────────────────────
-    getRoomCredentials: async (req, res, next) => {
+    verifyPlayer: async (req, res, next) => {
         try {
             const tournament = await Tournament.findById(req.params.id);
             if (!tournament) throw new ApiError(404, "Tournament not found");
-
-            if (!tournament.room?.room_id) {
-                throw new ApiError(404, "Room credentials have not been published yet");
-            }
+            if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
 
             const team = tournament.teams.find(
-                t => t.leader_user_id === req.user.id && t.is_confirmed
+                t => t.team_id?.toString() === req.params.teamId
             );
-            if (!team) {
-                throw new ApiError(403, "Only confirmed team leaders can view room credentials");
+            if (!team) throw new ApiError(404, "Team not found in this tournament");
+
+            const player = team.players.find(p => p.user_id === +req.params.userId);
+            if (!player) throw new ApiError(404, "Player not found in this team");
+
+            const verifiedCount = team.players.filter(p => p.is_verified && !p.is_extra).length;
+            if (!player.is_extra && verifiedCount >= 5) {
+                throw new ApiError(400, "This team already has 5 verified players");
             }
 
-            return res.status(200).json(new ApiResponse(200, {
-                room_id:  tournament.room.room_id,
-                password: tournament.room.password,
-            }, "Room credentials fetched"));
+            player.is_verified = true;
+            await tournament.save();
+
+            return res.status(200).json(
+                new ApiResponse(200, {}, "Player verified successfully")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }
     },
 
-    // ── GET LEADERBOARD ───────────────────────────────────────────────────────
-    getLeaderboard: async (req, res, next) => {
+    // ══════════════════════════════════════════════════════════════════════════
+    // ADMIN — SUBMIT SCORES
+    // POST /api/tournaments/:id/scores
+    // ══════════════════════════════════════════════════════════════════════════
+    submitScores: async (req, res, next) => {
         try {
-            const tournament = await Tournament.findById(req.params.id).select("scores title status winner");
-            if (!tournament) throw new ApiError(404, "Tournament not found");
+            const { scores } = req.body;
+            if (!scores || !Array.isArray(scores)) {
+                throw new ApiError(400, "Scores array is required");
+            }
 
-            return res.status(200).json(new ApiResponse(200, {
-                title:   tournament.title,
-                status:  tournament.status,
-                winner:  tournament.winner,
-                scores:  tournament.scores.map(s => ({
-                    rank:      s.rank,
-                    team_name: s.team_name,
-                    score:     s.score,
-                })),
-            }, "Leaderboard fetched"));
+            const tournament = await Tournament.findById(req.params.id);
+            if (!tournament) throw new ApiError(404, "Tournament not found");
+            if (tournament.admin_id !== req.admin.id) throw new ApiError(403, "Unauthorized");
+            if (tournament.status !== "live") {
+                throw new ApiError(400, "Can only submit scores for live tournaments");
+            }
+
+            const ranked = [...scores]
+                .sort((a, b) => b.score - a.score)
+                .map((s, i) => ({ ...s, rank: i + 1, updated_at: new Date() }));
+
+            tournament.scores = ranked;
+            await tournament.save();
+
+            return res.status(200).json(
+                new ApiResponse(200, { scores: ranked }, "Scores submitted successfully")
+            );
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
         }

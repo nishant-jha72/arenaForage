@@ -1,76 +1,74 @@
 const express = require("express");
-const router = express.Router();
+const router  = express.Router();
 
+// ── Controllers ───────────────────────────────────────────────────────────────
 const tournamentController = require("../Controller/Tournament.controller");
 const inviteController     = require("../Controller/Invite.controller");
 const waitlistController   = require("../Controller/Waitlist.controller");
 const bracketController    = require("../Controller/Bracket.controller");
 
-// Import directly without destructuring — matches your middleware export style
-const authMiddleware      = require("../Middleware/user.auth.middleware");
-const {adminAuthMiddleware} = require("../Middleware/Admin.auth.middleware");
+// ── Middleware ────────────────────────────────────────────────────────────────
+const authMiddleware          = require("../Middleware/user.auth.middleware");
+const { adminAuthMiddleware } = require("../Middleware/Admin.auth.middleware");
 
-// ── Debug guard ───────────────────────────────────────────────────────────────
-const check = (name, fn) => {
-    if (typeof fn !== "function") {
-        throw new Error(`[Routes] "${name}" is NOT a function — got: ${typeof fn}. Check exports in its controller.`);
-    }
-    return fn;
+// ── Guard: log any undefined handlers immediately on startup ──────────────────
+// This gives you a clear "X is undefined" message instead of a cryptic
+// "argument handler must be a function" error deep in the stack
+const required = {
+    "tournamentController.getAll":              tournamentController.getAll,
+    "tournamentController.getById":             tournamentController.getById,
+    "tournamentController.getLeaderboard":      tournamentController.getLeaderboard,
+    "tournamentController.getRoomCredentials":  tournamentController.getRoomCredentials,
+    "tournamentController.create":              tournamentController.create,
+    "tournamentController.update":              tournamentController.update,
+    "tournamentController.openRegistration":    tournamentController.openRegistration,
+    "tournamentController.publishRoom":         tournamentController.publishRoom,
+    "tournamentController.setLive":             tournamentController.setLive,
+    "tournamentController.completeTournament":  tournamentController.completeTournament,
+    "tournamentController.cancel":              tournamentController.cancel,
+    "tournamentController.confirmTeam":         tournamentController.confirmTeam,
+    "tournamentController.verifyPlayer":        tournamentController.verifyPlayer,
+    "tournamentController.submitScores":        tournamentController.submitScores,
+    "inviteController.registerTeam":            inviteController.registerTeam,
+    "inviteController.getMyRegistration":       inviteController.getMyRegistration,
+    "waitlistController.joinWaitlist":          waitlistController.joinWaitlist,
+    "waitlistController.promoteFromWaitlist":   waitlistController.promoteFromWaitlist,
+    "bracketController.getResults":             bracketController.getResults,
+    "bracketController.getBracket":             bracketController.getBracket,
+    "authMiddleware":                           authMiddleware,
+    "adminAuthMiddleware":                      adminAuthMiddleware,
 };
 
-const getAll             = check("getAll",             tournamentController.getAll);
-const getById            = check("getById",            tournamentController.getById);
-const getLeaderboard     = check("getLeaderboard",     tournamentController.getLeaderboard);
-const getRoomCredentials = check("getRoomCredentials", tournamentController.getRoomCredentials);
-const create             = check("create",             tournamentController.create);
-const update             = check("update",             tournamentController.update);
-const openRegistration   = check("openRegistration",   tournamentController.openRegistration);
-const publishRoom        = check("publishRoom",        tournamentController.publishRoom);
-const setLive            = check("setLive",            tournamentController.setLive);
-const completeTournament = check("completeTournament", tournamentController.completeTournament);
-const cancel             = check("cancel",             tournamentController.cancel);
-const confirmTeam        = check("confirmTeam",        tournamentController.confirmTeam);
-const verifyPlayer       = check("verifyPlayer",       tournamentController.verifyPlayer);
-const submitScores       = check("submitScores",       tournamentController.submitScores);
-
-const registerTeam        = check("registerTeam",        inviteController.registerTeam);
-const getMyRegistration   = check("getMyRegistration",   inviteController.getMyRegistration);
-
-const joinWaitlist        = check("joinWaitlist",        waitlistController.joinWaitlist);
-const promoteFromWaitlist = check("promoteFromWaitlist", waitlistController.promoteFromWaitlist);
-
-const getResults          = check("getResults",          bracketController.getResults);
-const getBracket          = check("getBracket",          bracketController.getBracket);
-// ─────────────────────────────────────────────────────────────────────────────
+Object.entries(required).forEach(([name, fn]) => {
+    if (typeof fn !== "function") {
+        console.error(`❌ MISSING handler: ${name} — check exports in its file`);
+    }
+});
 
 // ── Public ────────────────────────────────────────────────────────────────────
-router.get("/",                                                        getAll);
-router.get("/:id",                                                     getById);
-router.get("/:id/leaderboard",                                         getLeaderboard);
-router.get("/:id/results",                                             getResults);
-router.get("/:id/bracket",                                             getBracket);
+router.get("/",                     tournamentController.getAll);
+router.get("/:id",                  tournamentController.getById);
+router.get("/:id/leaderboard",      tournamentController.getLeaderboard);
+router.get("/:id/results",          bracketController.getResults);
+router.get("/:id/bracket",          bracketController.getBracket);
 
-// ── User — Protected ──────────────────────────────────────────────────────────
-router.post("/:id/register",               authMiddleware,             registerTeam);
-router.get("/:id/my-registration",         authMiddleware,             getMyRegistration);
-router.get("/:id/room",                    authMiddleware,             getRoomCredentials);
-router.post("/:id/waitlist",               authMiddleware,             joinWaitlist);
+// ── User protected ────────────────────────────────────────────────────────────
+router.get( "/:id/room",            authMiddleware, tournamentController.getRoomCredentials);
+router.post("/:id/register",        authMiddleware, inviteController.registerTeam);
+router.get( "/:id/my-registration", authMiddleware, inviteController.getMyRegistration);
+router.post("/:id/waitlist",        authMiddleware, waitlistController.joinWaitlist);
 
-// ── Admin — Protected ─────────────────────────────────────────────────────────
-router.post("/",                           adminAuthMiddleware,         create);
-router.patch("/:id",                       adminAuthMiddleware,         update);
-router.patch("/:id/open-registration",     adminAuthMiddleware,         openRegistration);
-router.patch("/:id/publish-room",          adminAuthMiddleware,         publishRoom);
-router.patch("/:id/live",                  adminAuthMiddleware,         setLive);
-router.patch("/:id/complete",              adminAuthMiddleware,         completeTournament);
-router.patch("/:id/cancel",               adminAuthMiddleware,          cancel);
-router.patch("/:id/waitlist/promote",      adminAuthMiddleware,         promoteFromWaitlist);
-router.patch("/:id/teams/:teamId/confirm", adminAuthMiddleware,         confirmTeam);
-router.patch(
-    "/:id/teams/:teamId/players/:userId/verify",
-    adminAuthMiddleware,
-    verifyPlayer
-);
-router.post("/:id/scores",                 adminAuthMiddleware,         submitScores);
+// ── Admin protected ───────────────────────────────────────────────────────────
+router.post("/",                                          adminAuthMiddleware, tournamentController.create);
+router.patch("/:id",                                      adminAuthMiddleware, tournamentController.update);
+router.patch("/:id/open-registration",                    adminAuthMiddleware, tournamentController.openRegistration);
+router.patch("/:id/publish-room",                         adminAuthMiddleware, tournamentController.publishRoom);
+router.patch("/:id/live",                                 adminAuthMiddleware, tournamentController.setLive);
+router.patch("/:id/complete",                             adminAuthMiddleware, tournamentController.completeTournament);
+router.patch("/:id/cancel",                               adminAuthMiddleware, tournamentController.cancel);
+router.patch("/:id/waitlist/promote",                     adminAuthMiddleware, waitlistController.promoteFromWaitlist);
+router.patch("/:id/teams/:teamId/confirm",                adminAuthMiddleware, tournamentController.confirmTeam);
+router.patch("/:id/teams/:teamId/players/:userId/verify", adminAuthMiddleware, tournamentController.verifyPlayer);
+router.post( "/:id/scores",                               adminAuthMiddleware, tournamentController.submitScores);
 
 module.exports = router;

@@ -17,6 +17,11 @@ const silentFetch = async (url) => {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
     });
+    // 401/403 = no cookie / not logged in — return null silently.
+    // The browser network tab will still show these — that is NORMAL
+    // and expected. It is not a bug. React StrictMode double-invokes
+    // effects in dev so you'll see each request twice — also normal.
+    if (res.status === 401 || res.status === 403) return null;
     if (!res.ok) return null;
     const data = await res.json();
     return data?.data || data?.admin || data?.user || data || null;
@@ -45,6 +50,7 @@ export function AuthProvider({ children }) {
       if (userProfile?.id) {
         setProfile(userProfile);
         setAuthType("user");
+        sessionStorage.setItem("af_role", "user");   // apiFetch refresh needs this
 
         // Fetch current team from tournament service
         const teamData = await silentFetch(`${TOUR_API}/api/teams/my`);
@@ -59,11 +65,13 @@ export function AuthProvider({ children }) {
       if (adminProfile?.id) {
         setProfile(adminProfile);
         setAuthType("admin");
+        sessionStorage.setItem("af_role", "admin");  // apiFetch refresh needs this
         setLoading(false);
         return;
       }
 
       // 3. Not logged in
+      sessionStorage.removeItem("af_role");
       setAuthType(null);
       setProfile(null);
       setLoading(false);
@@ -89,6 +97,7 @@ export function AuthProvider({ children }) {
     } catch {
       window.location.href = "/";
     }
+    sessionStorage.removeItem("af_role");
     setProfile(null);
     setAuthType(null);
     setTeam(null);
@@ -101,6 +110,7 @@ export function AuthProvider({ children }) {
       if (p) {
         setProfile(p);
         setAuthType("user");
+        sessionStorage.setItem("af_role", "user");   // apiFetch refresh needs this
         const t = await silentFetch(`${TOUR_API}/api/teams/my`);
         setTeam(t?.data || t || null);
       }
@@ -109,6 +119,7 @@ export function AuthProvider({ children }) {
       if (p) {
         setProfile(p);
         setAuthType("admin");
+        sessionStorage.setItem("af_role", "admin");  // apiFetch refresh needs this
       }
     }
   }, []);

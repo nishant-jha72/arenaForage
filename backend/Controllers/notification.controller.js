@@ -11,6 +11,11 @@ const sendEmail = async ({ to, subject, text }) => {
     });
     await transporter.sendMail({ from: process.env.EMAIL_USER, to, subject, text });
 };
+const getRequester = (req) => {
+    if (req.admin?.id) return { userId: Number(req.admin.id), userType: "admin" };
+    if (req.user?.id)  return { userId: Number(req.user.id),  userType: "user"  };
+    return { userId: null, userType: null };
+};
 
 // ─── Notification Helper (used by other controllers internally) ───────────────
 // Call this from tournament service callbacks or any controller that needs
@@ -34,12 +39,12 @@ const createAndEmailNotification = async ({
 // ─── Controller ───────────────────────────────────────────────────────────────
 const notificationController = {
 
+   
     // GET /api/notifications  (user)
     // GET /api/admin/notifications  (admin)
     getMyNotifications: async (req, res, next) => {
         try {
-            const userId   = req.user?.id || req.admin?.id;
-            const userType = req.user ? "user" : "admin";
+            const { userId, userType } = getRequester(req);
             const { page = 1, limit = 20 } = req.query;
 
             const data = await Notification.getByUser(userId, userType, {
@@ -56,8 +61,7 @@ const notificationController = {
     // GET /api/notifications/unread-count
     getUnreadCount: async (req, res, next) => {
         try {
-            const userId   = req.user?.id || req.admin?.id;
-            const userType = req.user ? "user" : "admin";
+            const { userId, userType } = getRequester(req);
             const count = await Notification.getUnreadCount(userId, userType);
             return res.status(200).json(new ApiResponse(200, { count }, "Unread count fetched"));
         } catch (error) {
@@ -68,8 +72,7 @@ const notificationController = {
     // PATCH /api/notifications/:id/read
     markAsRead: async (req, res, next) => {
         try {
-            const userId   = req.user?.id || req.admin?.id;
-            const userType = req.user ? "user" : "admin";
+            const { userId, userType } = getRequester(req);
             await Notification.markAsRead(req.params.id, userId, userType);
             return res.status(200).json(new ApiResponse(200, {}, "Marked as read"));
         } catch (error) {
@@ -80,8 +83,7 @@ const notificationController = {
     // PATCH /api/notifications/read-all
     markAllAsRead: async (req, res, next) => {
         try {
-            const userId   = req.user?.id || req.admin?.id;
-            const userType = req.user ? "user" : "admin";
+            const { userId, userType } = getRequester(req);
             const count = await Notification.markAllAsRead(userId, userType);
             return res.status(200).json(new ApiResponse(200, { count }, `${count} notifications marked as read`));
         } catch (error) {
@@ -92,7 +94,7 @@ const notificationController = {
     // DELETE /api/notifications/:id
     deleteNotification: async (req, res, next) => {
         try {
-            const userId = req.user?.id || req.admin?.id;
+            const { userId, userType } = getRequester(req);
             await Notification.deleteById(req.params.id, userId);
             return res.status(200).json(new ApiResponse(200, {}, "Notification deleted"));
         } catch (error) {

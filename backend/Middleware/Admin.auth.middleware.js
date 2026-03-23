@@ -1,9 +1,8 @@
-const jwt = require('jsonwebtoken');
+const jwt      = require('jsonwebtoken');
 const ApiError = require('../Utils/ApiError.utils');
-const Admin = require('../Models/Admin.model');
+const Admin    = require('../Models/Admin.model');
 
 // ── Authenticate Admin ────────────────────────────────────────────────────────
-// Verifies the adminAccessToken and sets req.admin
 const adminAuthMiddleware = async (req, res, next) => {
     try {
         const token =
@@ -25,7 +24,11 @@ const adminAuthMiddleware = async (req, res, next) => {
             throw new ApiError(401, "Admin not found");
         }
 
-        req.admin = admin;
+        // ✅ Explicitly set id as Number — MySQL2 sometimes returns string IDs
+        // ✅ Never set req.user here — notification controller uses
+        //    req.user presence to decide userType ("user" vs "admin")
+        req.admin = { ...admin, id: Number(admin.id) };
+
         next();
     } catch (error) {
         next(new ApiError(401, error?.message || "Invalid access token"));
@@ -33,9 +36,6 @@ const adminAuthMiddleware = async (req, res, next) => {
 };
 
 // ── Require Super Admin Verification ─────────────────────────────────────────
-// Use this on top of adminAuthMiddleware for action routes
-// Admin can login and view profile, but cannot perform any actions
-// until a super admin has approved their account
 const requireSuperAdminVerification = (req, res, next) => {
     if (req.admin?.superAdminVerified !== "YES") {
         return next(new ApiError(

@@ -1,22 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import apiFetch from "../../utils/Apifetch.utils";  // handles JWT refresh automatically
 
 const API      = import.meta.env.VITE_API_URL        || "http://localhost:5000";
 const TOUR_API = import.meta.env.VITE_TOURNAMENT_URL || "http://localhost:5001";
-
-/* ─────────────────────────────────────────────
-   HELPERS
-───────────────────────────────────────────── */
-const apiFetch = async (url, opts = {}) => {
-  const res = await fetch(url, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    ...opts,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Request failed");
-  return data;
-};
 
 const fmt = {
   currency: (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`,
@@ -189,15 +176,15 @@ function OverviewPanel({ admin, analytics, onRefresh }) {
   const stats = [
     { label: "Tournaments Organised", value: admin?.tournaments_organised ?? 0, color: "#dc2626" },
     { label: "Total Revenue",         value: fmt.currency(admin?.revenue),       color: "#f59e0b" },
-    { label: "Email Verified",        value: admin?.emailVerified === "YES" ? "✓ Yes" : "✗ No", color: admin?.emailVerified === "YES" ? "#22c55e" : "#ef4444" },
-    { label: "Account Status",        value: admin?.superAdminVerified === "YES" ? "✓ Approved" : "⏳ Pending", color: admin?.superAdminVerified === "YES" ? "#22c55e" : "#f59e0b" },
-  ];
+    { label: "Email Verified", value: admin?.emailVerified ? "✓ Yes" : "✗ No" },
+    { label: "Account Status", value: admin?.superAdminVerified ? "✓ Approved" : "⏳ Pending" },
+    ];
 
   return (
     <div>
       <SectionHeader title="OVERVIEW" sub={`Welcome back, ${admin?.name?.split(" ")[0] || "Admin"}`} />
-
-      {admin?.superAdminVerified !== "YES" && (
+`{console.log(admin.superAdminVerified)}`
+      {!admin?.superAdminVerified && (
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
           style={{
             background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)",
@@ -468,11 +455,37 @@ function TournamentsPanel({ saVerified, toast, adminId }) {
   const load = useCallback(async (adminId) => {
     setLoading(true);
     try {
+      // Try with admin_id filter first — if tournament service doesn't
+      // support the query param yet it may 500, so we fall back to
+      // fetching all and filtering client-side by admin_id
       const url = adminId
         ? `${TOUR_API}/api/tournaments?admin_id=${adminId}`
         : `${TOUR_API}/api/tournaments`;
-      const data = await apiFetch(url);
-      setTournaments(data.data || data.tournaments || []);
+
+      let data;
+      try {
+        data = await apiFetch(url);
+      } catch {
+        data = await apiFetch(`${TOUR_API}/api/tournaments`);
+      }
+
+
+      let all;
+      if (Array.isArray(data))                          all = data;
+      else if (Array.isArray(data.data))                all = data.data;
+      else if (Array.isArray(data.data?.tournaments))   all = data.data.tournaments;
+      else if (Array.isArray(data.tournaments))         all = data.tournaments;
+      else                                              all = [];
+
+      if (!Array.isArray(all)) all = [];
+
+      console.log("🔍 final all:", all, "isArray:", Array.isArray(all));
+
+      const byAdmin = adminId
+        ? all.filter(t => String(t.admin_id) === String(adminId))
+        : all;
+
+      setTournaments(byAdmin);
     } catch (e) { toast(e.message, "error"); }
     finally { setLoading(false); }
   }, []);
@@ -522,7 +535,16 @@ function TournamentsPanel({ saVerified, toast, adminId }) {
     finally { setConfirm(null); }
   };
 
-  const filtered = filter === "all" ? tournaments : tournaments.filter(t => t.status === filter);
+  // Triple-guard: tournaments state, safeTournaments, and filtered
+  // are ALL guaranteed arrays — .map() will never crash
+  const safeTournaments = Array.isArray(tournaments) ? tournaments : [];
+  const filtered = Array.isArray(
+    filter === "all"
+      ? safeTournaments
+      : safeTournaments.filter(t => t?.status === filter)
+  )
+    ? (filter === "all" ? safeTournaments : safeTournaments.filter(t => t?.status === filter))
+    : [];
 
   return (
     <div>
@@ -557,8 +579,9 @@ function TournamentsPanel({ saVerified, toast, adminId }) {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
-          {filtered.map((t) => (
-            <TournamentCard key={t._id} t={t} onAction={handleAction} saVerified={saVerified} />
+          {filtered.map((t, i) => (
+            // Use _id if available, fallback to index — prevents crash if _id is undefined
+            <TournamentCard key={t._id || t.id || i} t={t} onAction={handleAction} saVerified={saVerified} />
           ))}
         </div>
       )}
@@ -832,12 +855,13 @@ function ProfilePanel({ admin, onAdminUpdate, saVerified, toast }) {
           <p style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 22, color: "#f4f4f5", fontWeight: 700 }}>{admin?.name}</p>
           <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{admin?.email}</p>
           <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, background: admin?.emailVerified === "YES" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", color: admin?.emailVerified === "YES" ? "#4ade80" : "#f87171", border: `1px solid ${admin?.emailVerified === "YES" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}` }}>
-              {admin?.emailVerified === "YES" ? "✓ Email Verified" : "✗ Email Not Verified"}
-            </span>
-            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, background: admin?.superAdminVerified === "YES" ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)", color: admin?.superAdminVerified === "YES" ? "#4ade80" : "#fbbf24", border: `1px solid ${admin?.superAdminVerified === "YES" ? "rgba(34,197,94,0.3)" : "rgba(245,158,11,0.3)"}` }}>
-              {admin?.superAdminVerified === "YES" ? "✓ SA Approved" : "⏳ Pending SA Approval"}
-            </span>
+            <span>
+  {admin?.emailVerified ? "✓ Email Verified" : "✗ Email Not Verified"}
+</span>
+
+<span>
+  {admin?.superAdminVerified ? "✓ SA Approved" : "⏳ Pending SA Approval"}
+</span>
           </div>
         </div>
       </div>
@@ -1038,7 +1062,7 @@ export default function AdminDashboard() {
         const unreadRes = await apiFetch(`${API}/api/admin/notifications/unread-count`);
         setUnreadCount(unreadRes.data?.count || unreadRes.count || 0);
 
-        if (a?.superAdminVerified === "YES") {
+        if (a?.superAdminVerified) {
           try {
             const analyticsRes = await apiFetch(`${API}/api/admin/analytics`);
             setAnalytics(analyticsRes.data || analyticsRes);
@@ -1062,7 +1086,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const saVerified = admin?.superAdminVerified === "YES";
+ const saVerified = admin?.superAdminVerified;
 
   if (booting) {
     return (

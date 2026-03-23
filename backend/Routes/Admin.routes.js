@@ -3,7 +3,7 @@ const router = express.Router();
 
 const adminController = require('../Controllers/Admin.controller');
 const analyticsController = require('../Controllers/analytics.controller');
-const { notificationController } = require('../Controllers/notification.controller');
+const {notificationController} = require('../Controllers/notification.controller');
 const upload = require('../Middleware/multer.middlewares');
 const { adminAuthMiddleware, requireSuperAdminVerification } = require('../Middleware/Admin.auth.middleware');
 

@@ -45,22 +45,26 @@ const sendEmail = async ({ to, subject, text }) => {
 };
 
 // Strip all sensitive fields before sending to client
+// 🔥 FIXED sanitizeAdmin (CORE FIX)
 const sanitizeAdmin = (admin) => ({
-    id:                    admin.id,
-    name:                  admin.name,
-    email:                 admin.email,
-    profile_picture:       admin.profile_picture,
-    organization_name:     admin.organization_name,
-    phone_number:          admin.phone_number,
-    instagram:             admin.instagram,
-    twitter:               admin.twitter,
-    facebook:              admin.facebook,
-    linkedin:              admin.linkedin,
-    emailVerified:         admin.emailVerified,
-    superAdminVerified:    admin.superAdminVerified,
+    id: admin.id,
+    name: admin.name,
+    email: admin.email,
+    profile_picture: admin.profile_picture,
+    organization_name: admin.organization_name,
+    phone_number: admin.phone_number,
+    instagram: admin.instagram,
+    twitter: admin.twitter,
+    facebook: admin.facebook,
+    linkedin: admin.linkedin,
+
+    // ✅ ALWAYS BOOLEAN
+    emailVerified: Boolean(Number(admin.emailVerified)),
+    superAdminVerified: Boolean(Number(admin.superAdminVerified)),
+
     tournaments_organised: admin.tournaments_organised,
-    revenue:               admin.revenue,
-    created_at:            admin.created_at,
+    revenue: admin.revenue,
+    created_at: admin.created_at,
 });
 
 const cookieOptions = {
@@ -193,27 +197,26 @@ const adminController = {
                 throw new ApiError(401, "Invalid email or password");
             }
 
-            if (admin.emailVerified !== "YES") {
+            if (admin.emailVerified !== "1") {
                 throw new ApiError(403, "Please verify your email before logging in");
             }
-
             const { accessToken, refreshToken } = generateAccessAndRefreshTokens(admin.id);
-            await Admin.update(admin.id, { refreshToken });
+await Admin.update(admin.id, { refreshToken });
 
-            // Tell the frontend whether super admin has approved them
-            // so the UI can show a "pending approval" banner if needed
-            const message = admin.superAdminVerified === "YES"
-                ? "Login successful"
-                : "Login successful. Your account is pending super admin approval. You can access the dashboard but cannot perform any actions yet.";
+const sanitized = sanitizeAdmin(admin);
 
-            return res
+const message = sanitized.superAdminVerified
+    ? "Login successful"
+    : "Login successful. Your account is pending super admin approval.";
+
+return res
     .status(200)
     .cookie("adminAccessToken", accessToken, cookieOptions)
     .cookie("adminRefreshToken", refreshToken, cookieOptions)
     .json(new ApiResponse(200, {
-        admin: sanitizeAdmin(admin),
-        accessToken,              // ← add this
-        isVerifiedBySuperAdmin: admin.superAdminVerified === "YES",
+        admin: sanitized,
+        accessToken,
+        isVerifiedBySuperAdmin: sanitized.superAdminVerified,
     }, message));
         } catch (error) {
             next(new ApiError(error.statusCode || 500, error.message));
@@ -291,7 +294,7 @@ const adminController = {
             if (!admin) {
                 throw new ApiError(404, "Admin not found");
             }
-
+            // console.log("Fetched admin profile:", sanitizeAdmin(admin)); // Debug log
             return res
                 .status(200)
                 .json(new ApiResponse(200, { admin: sanitizeAdmin(admin) }, "Profile fetched successfully"));
