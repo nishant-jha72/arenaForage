@@ -37,7 +37,7 @@ const adminAuthMiddleware = async (req, res, next) => {
 
 // ── Require Super Admin Verification ─────────────────────────────────────────
 const requireSuperAdminVerification = (req, res, next) => {
-    if (req.admin?.superAdminVerified !== "YES") {
+    if (req.admin?.superAdminVerified !== "1") {
         return next(new ApiError(
             403,
             "Your account is pending super admin approval. You cannot perform this action yet."

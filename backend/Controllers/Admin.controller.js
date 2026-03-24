@@ -289,19 +289,27 @@ return res
     // ── GET PROFILE ───────────────────────────────────────────────────────────
     // GET /api/admin/profile  (protected)
     getProfile: async (req, res, next) => {
-        try {
-            const admin = await Admin.findById(req.admin.id);
-            if (!admin) {
-                throw new ApiError(404, "Admin not found");
-            }
-            // console.log("Fetched admin profile:", sanitizeAdmin(admin)); // Debug log
-            return res
-                .status(200)
-                .json(new ApiResponse(200, { admin: sanitizeAdmin(admin) }, "Profile fetched successfully"));
-        } catch (error) {
-            next(new ApiError(error.statusCode || 500, error.message));
-        }
-    },
+  try {
+    const admin = await Admin.findById(req.admin.id);
+
+    if (!admin) {
+      throw new ApiError(404, "Admin not found");
+    }
+
+    console.log("RAW DB:", admin.superAdminVerified);
+
+    const sanitized = sanitizeAdmin(admin);
+
+    console.log("SANITIZED:", sanitized.superAdminVerified);
+
+    return res.status(200).json(
+      new ApiResponse(200, { admin: sanitized }, "Profile fetched successfully")
+    );
+
+  } catch (error) {
+    next(new ApiError(error.statusCode || 500, error.message));
+  }
+} ,
 
     // ── UPDATE PROFILE ────────────────────────────────────────────────────────
     // PATCH /api/admin/profile  (protected + superAdminVerified)

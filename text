@@ -1,4 +1,2 @@
-UPDATE admins
-SET emailVerified = TRUE,
-    superAdminVerified = TRUE
-WHERE id = 1;
+https://promos-web.netlify.app/ is a website that offers various promotional materials and resources for businesses. It provides templates, graphics, and tools to help companies create effective marketing campaigns. The site is designed to be user-friendly and accessible, allowing users to easily find and customize the materials they need for their promotions. Whether you're looking for social media graphics, email templates, or print materials, Promos Web has a wide range of options to choose from.
+https://attendo-beta-two.vercel.app/ is a web application for smart Employee Management System. It offers features such as attendance tracking, leave management, and employee scheduling. The platform is designed to streamline HR processes and improve efficiency in managing employee data. With a user-friendly interface and robust functionality, Attendo aims to help businesses effectively manage their workforce and enhance productivity.
