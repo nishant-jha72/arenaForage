@@ -151,13 +151,13 @@ export default function Navbar({ alwaysVisible = false }) {
             {/* ── NOT LOGGED IN ── */}
             {!authLoading && !isLoggedIn && (
               <div className="hidden md:flex" style={{gap:8, marginLeft:4}}>
-                <a href="/login"
+                <a href="/user/login"
                   style={{fontSize:14, fontWeight:700, color:nc.text, padding:"8px 16px", borderRadius:12, textDecoration:"none", transition:"background 0.2s"}}
                   onMouseEnter={e=>e.currentTarget.style.background="rgba(128,128,128,0.12)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                 >Log In</a>
 
-                <a href="/register"
+                <a href="/user/register"
                   style={{fontSize:14, fontWeight:900, color:"#fff", background:"#dc2626", padding:"8px 20px", borderRadius:12, textDecoration:"none", transition:"all 0.2s"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="#b91c1c"; e.currentTarget.style.transform="scale(1.04)";}}
                   onMouseLeave={e=>{e.currentTarget.style.background="#dc2626"; e.currentTarget.style.transform="scale(1)";}}

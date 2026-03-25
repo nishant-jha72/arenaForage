@@ -2,35 +2,8 @@
 import { useState } from "react";
 import { useTheme, tokens } from "../context/ThemeContext";
 import Navbar from "../components/Navbar";
-
-// ── Mock Data — replace with API calls ───────────────────────────────────────
-const MOCK_USER = {
-  id:1, name:"Nishant Jha", email:"nishant@example.com",
-  profile_picture:null, emailVerified:"YES",
-  created_at:"2026-01-15T00:00:00Z",
-};
-const MOCK_TEAM = {
-  _id:"t001", name:"ALPHA SQUAD", tag:"ALPH",
-  logo_url:null, leader_user_id:1,
-  members:[
-    {user_id:1,  username:"NishantJha",  role:"Leader"},
-    {user_id:2,  username:"RahulKing",   role:"Member"},
-    {user_id:3,  username:"DevPlayer",   role:"Member"},
-    {user_id:4,  username:"SniperX99",   role:"Member"},
-    {user_id:5,  username:"FireStorm",   role:"Member"},
-  ],
-};
-const MOCK_NOTIFICATIONS = [
-  {id:1, title:"Room Published",   message:"INFERNO CUP S3 room credentials are live. Check your email.",  type:"tournament", is_read:false, created_at:"2026-03-11T14:00:00Z"},
-  {id:2, title:"Team Invite",      message:"DevPlayer has joined your team ALPHA SQUAD.",                   type:"team",       is_read:false, created_at:"2026-03-10T09:30:00Z"},
-  {id:3, title:"Registration Open",message:"BLOODZONE ELITE is now open for registration.",                 type:"tournament", is_read:true,  created_at:"2026-03-09T12:00:00Z"},
-  {id:4, title:"Match Complete",   message:"PHANTOM LEAGUE has ended. Check the results!",                  type:"general",    is_read:true,  created_at:"2026-03-08T20:00:00Z"},
-];
-const MOCK_HISTORY = [
-  {id:"t001", title:"BLOODZONE S2", game:"Free Fire", status:"completed", rank:2, kills:18, totalPoints:38, prizeWon:2000, date:"2026-02-15"},
-  {id:"t002", title:"PREDATOR CUP", game:"Free Fire", status:"completed", rank:1, kills:24, totalPoints:52, prizeWon:5000, date:"2026-01-28"},
-  {id:"t003", title:"INFERNO OPEN", game:"Free Fire", status:"completed", rank:5, kills:10, totalPoints:21, prizeWon:0,    date:"2026-01-10"},
-];
+import API from "../app/Axios";
+import { useUser } from "../context/UserContext";
 
 const SIDEBAR_ITEMS = [
   {id:"profile",       icon:"👤", label:"Profile"},
@@ -40,17 +13,29 @@ const SIDEBAR_ITEMS = [
   {id:"password",      icon:"🔒", label:"Change Password"},
 ];
 
+const logout = async () => {
+  await API.post("/users/logout");
+  window.location.href = "/";
+};
+
+const handleCreateTeams = async () => {
+await API.post("/teams", {
+  name: "Team Name",
+  tag: "TAG",
+});
+};
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function Sidebar({ active, setActive, unread, dark }) {
   const t = tokens(dark);
+  const {user} = useUser();
   return (
     <aside style={{width:240, flexShrink:0, background:t.surface, border:`1px solid ${t.border}`, borderRadius:20, padding:12, height:"fit-content", position:"sticky", top:88}}>
       {/* User avatar */}
       <div style={{textAlign:"center", padding:"20px 16px 16px", borderBottom:`1px solid ${t.borderSub}`, marginBottom:8}}>
         <div style={{width:64, height:64, borderRadius:"50%", background:"#dc2626", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 10px", fontSize:26, fontWeight:900, color:"#fff", fontFamily:"'Barlow Condensed',sans-serif"}}>
-          {MOCK_USER.name[0]}
+          {user?.name}
         </div>
-        <p style={{fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:16, color:t.textPrim, margin:0}}>{MOCK_USER.name}</p>
+        <p style={{fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:16, color:t.textPrim, margin:0}}>{user.name}</p>
         <p style={{fontSize:12, color:t.textMuted, margin:"2px 0 0"}}>{MOCK_TEAM?.name ?? "No team"}</p>
       </div>
 
@@ -85,7 +70,7 @@ function Sidebar({ active, setActive, unread, dark }) {
           style={{width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:12, border:"none", cursor:"pointer", background:"transparent", color:"#ef4444", fontFamily:"'Barlow',sans-serif", fontWeight:600, fontSize:14, transition:"background 0.18s"}}
           onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}
           onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-          onClick={() => { /* TODO: POST /api/users/logout */ window.location.href="/"; }}
+          onClick={() => { logout }}
         >
           <span>🚪</span> Log Out
         </button>
@@ -96,17 +81,27 @@ function Sidebar({ active, setActive, unread, dark }) {
 
 // ── Profile Panel ─────────────────────────────────────────────────────────────
 function ProfilePanel({ dark }) {
+  const {user} = useUser();
   const t = tokens(dark);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: MOCK_USER.name, email: MOCK_USER.email });
+  const [form, setForm] = useState({ name: user.name, email: user.email });
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
-    // TODO: PATCH /api/users/profile
+  try {
+    await API.patch("/users/profile", form);
     await new Promise(r => setTimeout(r, 800));
-    setSaved(true); setEditing(false);
+
+    setSaved(true);
+    setEditing(false);
+
     setTimeout(() => setSaved(false), 3000);
-  };
+
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 
   return (
     <div>
@@ -115,11 +110,11 @@ function ProfilePanel({ dark }) {
         {/* Avatar */}
         <div style={{display:"flex", alignItems:"center", gap:20, marginBottom:28, paddingBottom:24, borderBottom:`1px solid ${t.borderSub}`}}>
           <div style={{width:80, height:80, borderRadius:"50%", background:"linear-gradient(135deg,#dc2626,#991b1b)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:32, color:"#fff", fontWeight:900, fontFamily:"'Barlow Condensed',sans-serif", flexShrink:0}}>
-            {MOCK_USER.name[0]}
+            {user.name}
           </div>
           <div>
-            <p style={{fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:22, color:t.textPrim, margin:"0 0 4px"}}>{MOCK_USER.name}</p>
-            <p style={{color:t.textSub, fontSize:13, margin:"0 0 8px"}}>{MOCK_USER.email}</p>
+            <p style={{fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:22, color:t.textPrim, margin:"0 0 4px"}}>{user?.name}</p>
+            <p style={{color:t.textSub, fontSize:13, margin:"0 0 8px"}}>{user?.email}</p>
             <span style={{display:"inline-flex", alignItems:"center", gap:5, background:"rgba(16,185,129,0.1)", color:"#10b981", fontSize:11, fontWeight:700, letterSpacing:"0.08em", padding:"3px 10px", borderRadius:20}}>
               <span style={{width:6, height:6, borderRadius:"50%", background:"#10b981"}} />
               VERIFIED
@@ -149,7 +144,7 @@ function ProfilePanel({ dark }) {
           <div>
             <label style={{display:"block", fontSize:11, fontWeight:700, color:t.textMuted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6}}>Member Since</label>
             <p style={{color:t.textPrim, fontSize:15, fontWeight:500, margin:0, padding:"10px 0"}}>
-              {new Date(MOCK_USER.created_at).toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"})}
+              {new Date(user?.created_at).toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"})}
             </p>
           </div>
           <div>
@@ -180,12 +175,17 @@ function TeamPanel({ dark }) {
 
   const handleInvite = async () => {
     if (!invite.trim()) return;
-    // TODO: POST /api/teams/invite { username: invite }
+    await API.post("/teams/invite", {
+  username: invite,
+});
     await new Promise(r => setTimeout(r, 600));
     setInviteMsg(`Invite sent to ${invite}`);
     setInvite("");
     setTimeout(() => setInviteMsg(""), 3000);
   };
+  const handleRemoveMember = async (userId) => {
+  await API.delete(`/teams/members/${userId}`);
+};
 
   return (
     <div>
@@ -218,9 +218,9 @@ function TeamPanel({ dark }) {
                       <p style={{color:t.textMuted, fontSize:11, margin:0}}>{m.role}</p>
                     </div>
                   </div>
-                  {m.user_id !== MOCK_USER.id && (
+                  {m.user_id !== user?.id && (
                     <button style={{padding:"4px 12px", borderRadius:8, border:`1px solid ${t.border}`, background:"transparent", color:"#ef4444", fontFamily:"'Barlow',sans-serif", fontWeight:600, fontSize:12, cursor:"pointer"}}
-                      onClick={() => { /* TODO: DELETE /api/teams/members/:userId */ }}
+                      onClick={() => { handleRemoveMember(m.user_id) }}
                     >Remove</button>
                   )}
                 </div>
@@ -247,7 +247,7 @@ function TeamPanel({ dark }) {
           <h3 style={{fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:24, color:t.textPrim, marginBottom:8}}>NO TEAM YET</h3>
           <p style={{color:t.textSub, fontSize:14, marginBottom:24}}>Create a team to start competing in tournaments.</p>
           <button style={{padding:"12px 32px", background:"#dc2626", color:"#fff", border:"none", borderRadius:14, fontFamily:"'Barlow',sans-serif", fontWeight:900, fontSize:14, cursor:"pointer"}}
-            onClick={() => { /* TODO: POST /api/teams */ }}
+            onClick={handleCreateTeams}
           >Create Team</button>
         </div>
       )}
@@ -262,20 +262,20 @@ function NotificationsPanel({ dark, setUnread }) {
 
   const typeIcon = { tournament:"🏆", team:"🤝", general:"📢" };
 
-  const markAll = () => {
-    // TODO: PATCH /api/users/notifications/read-all
+  const markAll =async () => {
+     await API.patch("/users/notifications/read-all");
     setNotifs(n => n.map(x => ({...x, is_read:true})));
     setUnread(0);
   };
 
-  const markOne = (id) => {
-    // TODO: PATCH /api/users/notifications/:id/read
+  const markOne = async (id) => {
+    await API.patch(`/users/notifications/${id}/read`);
     setNotifs(n => n.map(x => x.id===id ? {...x, is_read:true} : x));
     setUnread(u => Math.max(0, u-1));
   };
 
-  const deleteOne = (id) => {
-    // TODO: DELETE /api/users/notifications/:id
+  const deleteOne =async (id) => {
+    await API.delete(`/users/notifications/${id}`);
     setNotifs(n => n.filter(x => x.id!==id));
   };
 
@@ -477,7 +477,10 @@ function PasswordPanel({ dark }) {
     if (form.newPw !== form.confirm) e.confirm  = "Passwords don't match";
     if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true);
-    // TODO: PATCH /api/users/change-password
+    await API.patch("/users/change-password", {
+  currentPassword: form.current,
+  newPassword: form.newPw,
+    });
     await new Promise(r => setTimeout(r, 800));
     setSuccess(true); setLoading(false);
     setForm({ current:"", newPw:"", confirm:"" });

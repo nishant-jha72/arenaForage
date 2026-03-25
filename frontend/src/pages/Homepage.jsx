@@ -324,7 +324,7 @@ export default function HomePage() {
             <ThemeToggle dark={dark} onToggle={()=>setDark(d=>!d)} />
 
             <div className="hidden md:flex items-center" style={{gap:8,marginLeft:8}}>
-              <a href="/login" style={{fontSize:14,fontWeight:700,color:nc.text,padding:"8px 16px",borderRadius:12,textDecoration:"none",transition:"background 0.2s"}}
+              <a href="/user/login" style={{fontSize:14,fontWeight:700,color:nc.text,padding:"8px 16px",borderRadius:12,textDecoration:"none",transition:"background 0.2s"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(128,128,128,0.12)"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}
               >Log In</a>

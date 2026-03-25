@@ -13,16 +13,23 @@ import AdminRegisterPage from "./pages/Admin/AdminRegister";
 import AdminLoginPage from "./pages/Admin/AdminLogin";
 import AdminDashboard from "./pages/Admin/AdminDashboard";
 import { AuthProvider } from "./context/AuthContext";
+import UserLoginPage from "./pages/users/UserLoginPage";
+import UserRegisterPage from "./pages/users/UserRegisterPage";
+import UserDashboard from "./pages/users/UserDashboard";
+import ResetPasswordPage from "./pages/users/ResetPasswordPage";
+import ForgotPasswordPage from "./pages/users/ForgotPasswordPage";
+import { UserProvider } from "./context/UserContext";
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <UserProvider>
               <BrowserRouter>
         <Routes>
           {/* Public */}
           <Route path="/"                element={<HomePage />}                              />
-          <Route path="/login"           element={<AuthPage defaultTab="login" />}           />
-          <Route path="/register"        element={<AuthPage defaultTab="register" />}        />
+          {/* <Route path="/login"           element={<AuthPage defaultTab="login" />}           />
+          <Route path="/register"        element={<AuthPage defaultTab="register" />}        /> */}
           <Route path="/tournaments"     element={<TournamentsPage />}                       />
           <Route path="/tournaments/:id" element={<TournamentDetailPage />}                  />
           <Route path="/leaderboard"     element={<LeaderboardPage />}                       />
@@ -33,9 +40,14 @@ export default function App() {
           <Route path="/admin/register"  element={<AdminRegisterPage />}                       />
           <Route path="/admin/login"     element={<AdminLoginPage />}                          />
           <Route path="/admin/dashboard" element={<AdminDashboard />}                          />
+          <Route path = "/user/login"     element = {< UserLoginPage/>} />
+          <Route path = "/user/register"     element = {< UserRegisterPage/>} />
+          <Route path = "/user/dashboard"    element = {< UserDashboard/>} />
+           <Route path = "/user/reset-password"    element = {<ResetPasswordPage/>} />
+            <Route path = "/user/forgot-password"    element = {<  ForgotPasswordPage/>} />
         </Routes>
       </BrowserRouter>
-
+            </ UserProvider >
       </AuthProvider>
     </ThemeProvider>
   );

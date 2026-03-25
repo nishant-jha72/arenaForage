@@ -61,7 +61,21 @@ function LoginForm({ onSwitch }) {
   const [serverError, setServerError] = useState("");
 
   const set = (k) => (e) => setForm(f => ({...f, [k]:e.target.value}));
+  const login = async (email, password) => {
+  try {
+    const gmail = email;
+    const res = await API.post(
+      "/users/login",
+      { gmail , password },
+      { withCredentials: true }
+    );
 
+    return res.data;
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+};
   const validate = () => {
     const e = {};
     if (!form.email)    e.email    = "Email is required";
@@ -74,9 +88,9 @@ function LoginForm({ onSwitch }) {
     if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true); setServerError("");
     try {
-      // TODO: POST /api/users/login
+      await login(email, password);
       await new Promise(r => setTimeout(r, 1200)); // mock delay
-      window.location.href = "/dashboard";
+      window.location.href = "/user/dashboard";
     } catch (err) {
       setServerError("Invalid email or password.");
     } finally {
@@ -134,13 +148,26 @@ function RegisterForm({ onSwitch }) {
     if (form.password !== form.confirm) e.confirm = "Passwords do not match";
     return e;
   };
+  const register = async (name, email, password) => {
+  try {
+    const res = await API.post(
+      "/users/register",
+      { name, email, password },
+      { withCredentials: true }
+    );
 
+    return res.data;
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+};
   const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true);
     try {
-      // TODO: POST /api/users/register
+      await register(name, email, password);
       await new Promise(r => setTimeout(r, 1200));
       setSuccess(true);
     } catch (err) {
